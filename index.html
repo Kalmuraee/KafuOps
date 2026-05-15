@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KafuOps — production debugging in evidence-backed merge requests</title>
+  <meta name="description" content="Open-source production-debugging agent. Turns backend incidents into reviewable merge requests with grounded context, redaction, sandbox-validated patches, and confidence scoring. Self-hostable.">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+
+  <meta property="og:title" content="KafuOps — production debugging in evidence-backed merge requests">
+  <meta property="og:description" content="Open-source. Self-hostable. No continuous logs to the model. Incident → grounded context → sandbox patch → reviewable MR.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://kalmuraee.github.io/KafuOps/">
+  <meta property="og:image" content="https://kalmuraee.github.io/KafuOps/assets/og-card.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://kalmuraee.github.io/KafuOps/assets/og-card.svg">
+
+  <style>
+    :root {
+      --primary: #0F766E;
+      --primary-deep: #0B5C56;
+      --accent: #F59E0B;
+      --ink: #0B1220;
+      --surface: #F8FAFC;
+      --muted: #475569;
+      --border: #E2E8F0;
+      --code-bg: #0F172A;
+      --code-fg: #E2E8F0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--ink);
+      background: var(--surface);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    code, pre, .mono {
+      font-family: "JetBrains Mono", "IBM Plex Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1, h2, h3 { line-height: 1.2; letter-spacing: -0.01em; }
+    .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+    /* Nav */
+    nav.top {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(255,255,255,0.85); backdrop-filter: saturate(140%) blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav.top .row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 0;
+    }
+    nav.top a.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; }
+    nav.top a.brand img { width: 28px; height: 28px; }
+    nav.top .links a { color: var(--muted); margin-left: 22px; font-size: 15px; }
+    nav.top .links a:hover { color: var(--ink); text-decoration: none; }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(180deg, #0B1220 0%, #0F2A2A 100%);
+      color: var(--surface);
+      padding: 88px 0 96px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(800px 400px at 80% 10%, rgba(15,118,110,0.20), transparent 60%),
+        radial-gradient(600px 320px at 10% 90%, rgba(245,158,11,0.10), transparent 60%);
+    }
+    .hero .container { position: relative; }
+    .hero img.wordmark { height: 72px; margin-bottom: 28px; }
+    .hero h1 {
+      font-size: clamp(34px, 5vw, 56px);
+      margin: 0 0 18px; font-weight: 700;
+      color: #F8FAFC;
+    }
+    .hero h1 span.accent { color: var(--accent); }
+    .hero p.sub { font-size: 19px; color: #CBD5E1; max-width: 720px; margin: 0 0 28px; }
+    .hero .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 18px; border-radius: 10px; font-weight: 600;
+      border: 1px solid transparent; transition: transform .05s ease, background .15s ease;
+    }
+    .btn:hover { text-decoration: none; transform: translateY(-1px); }
+    .btn-primary { background: var(--accent); color: var(--ink); }
+    .btn-primary:hover { background: #FCB445; }
+    .btn-ghost { background: transparent; color: #F8FAFC; border-color: rgba(255,255,255,0.25); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.08); }
+
+    /* Pipeline strip */
+    .pipeline {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+      margin-top: 36px; color: #94A3B8; font-size: 14px;
+    }
+    .pipeline .step { background: rgba(255,255,255,0.06); padding: 6px 12px; border-radius: 999px; }
+    .pipeline .step.mr { color: var(--accent); border: 1px solid rgba(245,158,11,0.4); }
+    .pipeline .sep { color: #475569; }
+
+    /* Sections */
+    section { padding: 80px 0; }
+    section h2 { font-size: 32px; margin: 0 0 12px; }
+    section p.lead { color: var(--muted); font-size: 17px; max-width: 720px; margin: 0 0 36px; }
+
+    /* Two-column "what / what not" */
+    .twocol { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 24px; }
+    @media (max-width: 720px) { .twocol { grid-template-columns: 1fr; } }
+    .col { background: white; border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
+    .col h3 { margin: 0 0 12px; font-size: 18px; }
+    .col ul { padding-left: 20px; margin: 0; color: var(--ink); }
+    .col li { margin: 8px 0; }
+    .col.does h3 { color: var(--primary); }
+    .col.does h3::before { content: "✓"; margin-right: 8px; }
+    .col.does-not h3 { color: var(--accent); }
+    .col.does-not h3::before { content: "—"; margin-right: 8px; color: var(--accent); }
+
+    /* Feature grid */
+    .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+    @media (max-width: 880px) { .features { grid-template-columns: 1fr; } }
+    .feature {
+      background: white; border: 1px solid var(--border); border-radius: 14px; padding: 22px;
+    }
+    .feature .dot {
+      display: inline-block; width: 10px; height: 10px; border-radius: 999px;
+      background: var(--primary); margin-right: 10px; vertical-align: middle;
+    }
+    .feature.accent .dot { background: var(--accent); }
+    .feature h3 { margin: 0 0 8px; font-size: 17px; }
+    .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+
+    /* Code blocks */
+    pre.code {
+      background: var(--code-bg); color: var(--code-fg);
+      padding: 18px 20px; border-radius: 12px; overflow: auto; font-size: 14px;
+      border: 1px solid #1E293B;
+    }
+    .code .c-cmt { color: #64748B; }
+    .code .c-cmd { color: var(--accent); }
+
+    /* MR preview */
+    .mr-card {
+      background: white; border: 1px solid var(--border); border-radius: 14px;
+      padding: 22px; box-shadow: 0 10px 30px rgba(11,18,32,0.04);
+    }
+    .mr-card .pill {
+      display: inline-block; padding: 2px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; margin-right: 6px;
+    }
+    .pill-teal { background: #CCFBF1; color: #115E59; }
+    .pill-amber { background: #FEF3C7; color: #92400E; }
+    .pill-zinc { background: #E2E8F0; color: #334155; }
+    .mr-card .mr-title { font-weight: 700; margin: 10px 0 8px; }
+    .mr-card dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 16px; margin: 12px 0 0; font-size: 14px; }
+    .mr-card dt { color: var(--muted); }
+
+    /* Honesty section */
+    .status-card {
+      background: linear-gradient(180deg, #FFFBEB 0%, white 100%);
+      border: 1px solid #FDE68A; border-radius: 14px; padding: 22px;
+    }
+    .status-card h3 { margin: 0 0 8px; color: #92400E; }
+    .status-card p { margin: 0 0 8px; color: var(--ink); }
+    .status-card a { color: #92400E; font-weight: 600; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border); padding: 36px 0 48px;
+      color: var(--muted); font-size: 14px;
+    }
+    footer .row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--ink); }
+  </style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="container row">
+    <a class="brand" href="./">
+      <img src="assets/favicon.svg" alt="">
+      <span class="mono">kafuops</span>
+    </a>
+    <div class="links">
+      <a href="https://github.com/Kalmuraee/KafuOps#quick-start">Quick start</a>
+      <a href="https://github.com/Kalmuraee/KafuOps/blob/main/STATUS.md">Status</a>
+      <a href="https://github.com/Kalmuraee/KafuOps/tree/main/docs">Docs</a>
+      <a href="https://github.com/Kalmuraee/KafuOps">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <img class="wordmark" src="assets/wordmark.svg" alt="KafuOps">
+    <h1>Turn backend incidents into <span class="accent">evidence-backed merge requests</span>.</h1>
+    <p class="sub">
+      KafuOps observes your backend, learns the architecture, detects meaningful incidents, builds a sanitized
+      evidence packet, grounds the model with only the relevant files, and opens a reviewable PR or MR with confidence
+      and blast-radius analysis. Self-hostable. AGPL-3.0.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/Kalmuraee/KafuOps#quick-start">Get started</a>
+      <a class="btn btn-ghost" href="https://github.com/Kalmuraee/KafuOps">View on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/Kalmuraee/KafuOps/blob/main/STATUS.md">What works today</a>
+    </div>
+    <div class="pipeline">
+      <span class="step mono">incident</span><span class="sep">→</span>
+      <span class="step mono">grounded context</span><span class="sep">→</span>
+      <span class="step mono">sandbox patch</span><span class="sep">→</span>
+      <span class="step mr mono">reviewable MR</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="container">
+    <h2>The product rule</h2>
+    <p class="lead">
+      KafuOps will not stream all your logs to a model. It watches locally, decides when an event is a real incident, ships
+      a small sanitized bundle to the model, and runs the resulting patch through a sandbox before any human sees a diff.
+    </p>
+    <div class="twocol">
+      <div class="col does">
+        <h3>What KafuOps does</h3>
+        <ul>
+          <li>Observes logs, traces, runtime errors, and alert webhooks.</li>
+          <li>Builds a living <span class="mono">.kafuops/memory/</span> map of your backend.</li>
+          <li>Deduplicates noisy events into incidents.</li>
+          <li>Selects the right source files, tests, and log snippets per incident.</li>
+          <li>Generates a regression test and a small patch.</li>
+          <li>Runs install + tests in a sandbox before opening an MR.</li>
+          <li>Scores confidence and blast radius, and writes a grounding manifest.</li>
+        </ul>
+      </div>
+      <div class="col does-not">
+        <h3>What KafuOps does not do</h3>
+        <ul>
+          <li>Stream continuous logs to the model.</li>
+          <li>Upload your whole repo by default.</li>
+          <li>Send <span class="mono">.env</span>, secrets, or private keys to the model.</li>
+          <li>Modify auth, payments, or migrations without approval policy.</li>
+          <li>Auto-merge production fixes by default.</li>
+          <li>Replace your observability stack.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="background: white; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+  <div class="container">
+    <h2>Key features</h2>
+    <p class="lead">Each feature exists in <span class="mono">src/</span> today. See <a href="https://github.com/Kalmuraee/KafuOps/blob/main/STATUS.md">STATUS.md</a> for the honest map.</p>
+    <div class="features">
+      <div class="feature"><h3><span class="dot"></span>Incident-triggered AI</h3><p>The model is only called after a configured trigger fires. Logs and stack traces are treated as untrusted data, not instructions.</p></div>
+      <div class="feature"><h3><span class="dot"></span>Living project memory</h3><p>A scanned map of routes, services, tests, dependencies, and the architecture graph — written to disk so humans can read it.</p></div>
+      <div class="feature accent"><h3><span class="dot"></span>Evidence-backed MRs</h3><p>Every MR ships with root cause, files inspected, tests run, confidence score, blast radius, and a grounding manifest.</p></div>
+      <div class="feature"><h3><span class="dot"></span>Privacy by default</h3><p>Redaction at ingest, redaction before model calls, ReDoS-guarded user patterns, deny-listed paths, raw-body HMAC for webhooks.</p></div>
+      <div class="feature"><h3><span class="dot"></span>Policy gates</h3><p>Never-modify globs, require-approval globs, confidence thresholds, and post-apply checks against the actual diff.</p></div>
+      <div class="feature accent"><h3><span class="dot"></span>Self-hostable</h3><p>Single Docker image. Local sandbox. No vendor lock-in. AGPL-3.0.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Quick start</h2>
+    <p class="lead">From a clean clone:</p>
+<pre class="code"><span class="c-cmt"># install deps and build the CLI</span>
+<span class="c-cmd">npm</span> install
+<span class="c-cmd">npm</span> run build
+
+<span class="c-cmt"># inside any Node, TS, FastAPI, or Flask repo</span>
+<span class="c-cmd">kafuops</span> init -y
+<span class="c-cmd">kafuops</span> doctor
+<span class="c-cmd">kafuops</span> scan
+
+<span class="c-cmt"># observe a child process for crashes</span>
+<span class="c-cmd">kafuops</span> run -- node ./server.js
+
+<span class="c-cmt"># or drive the full pipeline manually</span>
+<span class="c-cmd">kafuops</span> simulate error
+<span class="c-cmd">kafuops</span> incidents list
+<span class="c-cmd">kafuops</span> incidents open-mr inc_2026_05_15_xyz --in-place --dry-run
+</pre>
+    <p style="color: var(--muted); margin-top: 14px; font-size: 14px;">
+      Without <span class="mono">OPENAI_API_KEY</span> and <span class="mono">KAFUOPS_GIT_TOKEN</span> the whole pipeline runs in dry-run, so you can inspect the
+      generated incident, context bundle, grounding manifest, confidence score, and MR body before connecting anything live.
+    </p>
+  </div>
+</section>
+
+<section style="background: white; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+  <div class="container">
+    <h2>What a generated MR looks like</h2>
+    <p class="lead">Every KafuOps MR is reviewable, not magical.</p>
+    <div class="mr-card">
+      <div>
+        <span class="pill pill-teal">kafuops</span>
+        <span class="pill pill-amber">incident-fix</span>
+        <span class="pill pill-zinc">confidence-high</span>
+        <span class="pill pill-zinc">risk-low</span>
+      </div>
+      <div class="mr-title">[KafuOps] Fix checkout error when payment method is missing</div>
+      <dl>
+        <dt>Incident</dt><dd class="mono">inc_2026_05_15_xyz · service=api · env=production · severity=high · 18 events</dd>
+        <dt>Root cause</dt><dd>Retry handler assumed <span class="mono">customer.defaultPaymentMethod</span> was always present.</dd>
+        <dt>Files inspected</dt><dd class="mono">src/payment/retry.ts · src/routes/checkout.ts · tests/payment/retry.test.ts</dd>
+        <dt>Files changed</dt><dd class="mono">src/payment/retry.ts · tests/payment/retry.test.ts</dd>
+        <dt>Validation</dt><dd><span class="mono">npm ci</span> ok · <span class="mono">npm test</span> passed</dd>
+        <dt>Confidence</dt><dd>84 / 100 · stack trace maps to changed file · regression test added · patch is small</dd>
+        <dt>Blast radius</dt><dd>low · affects POST /checkout, payment retry flow; no schema change</dd>
+        <dt>Grounding manifest</dt><dd class="mono">.kafuops/incidents/inc_2026_05_15_xyz/grounding-manifest.md</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Honesty first</h2>
+    <p class="lead">This is a 0.1.0 MVP. Some parts of the documentation describe the destination, not today.</p>
+    <div class="status-card">
+      <h3>Read STATUS.md before you decide</h3>
+      <p>Every spec document is mapped to one of three states — ✅ implemented, 🟡 partial, 🔲 not yet. No ambiguity.</p>
+      <p><a href="https://github.com/Kalmuraee/KafuOps/blob/main/STATUS.md">→ Open STATUS.md</a></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container row">
+    <div>
+      © <span id="year">2026</span> KafuOps contributors · <a href="https://github.com/Kalmuraee/KafuOps/blob/main/LICENSE">AGPL-3.0</a>
+    </div>
+    <div>
+      <a href="https://github.com/Kalmuraee/KafuOps">GitHub</a> ·
+      <a href="https://github.com/Kalmuraee/KafuOps/blob/main/SECURITY.md">Security</a> ·
+      <a href="https://github.com/Kalmuraee/KafuOps/blob/main/CONTRIBUTING.md">Contributing</a>
+    </div>
+  </div>
+</footer>
+
+<script>document.getElementById("year").textContent = new Date().getFullYear();</script>
+</body>
+</html>
