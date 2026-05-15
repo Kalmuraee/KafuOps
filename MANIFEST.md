@@ -1,0 +1,55 @@
+# KafuOps Docs Manifest
+
+Generated documentation files:
+
+- `CHANGELOG.md`
+- `CODE_OF_CONDUCT.md`
+- `CONTRIBUTING.md`
+- `GOVERNANCE.md`
+- `LICENSE.md`
+- `PRODUCT_BRIEF.md`
+- `README.md`
+- `SECURITY.md`
+- `docs/API_REFERENCE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/ARCHITECTURE_GRAPH.md`
+- `docs/BLAST_RADIUS.md`
+- `docs/CLI.md`
+- `docs/CONFIDENCE_SCORE.md`
+- `docs/CONFIGURATION.md`
+- `docs/DATA_MODEL.md`
+- `docs/DEPLOYMENT_DOCKER.md`
+- `docs/DEPLOYMENT_KUBERNETES.md`
+- `docs/ERROR_TRIGGERED_LLM.md`
+- `docs/EXAMPLES.md`
+- `docs/EXAMPLE_INCIDENT_PACKET.md`
+- `docs/FAQ.md`
+- `docs/GETTING_STARTED.md`
+- `docs/GLOSSARY.md`
+- `docs/INCIDENT_WORKFLOW.md`
+- `docs/INDEX.md`
+- `docs/INTEGRATIONS.md`
+- `docs/MR_GENERATION.md`
+- `docs/OBSERVABILITY_LAYER.md`
+- `docs/POLICIES.md`
+- `docs/PROJECT_MEMORY.md`
+- `docs/PROMPT_INJECTION_SAFETY.md`
+- `docs/REDACTION.md`
+- `docs/ROADMAP.md`
+- `docs/RUNTIME_MODES.md`
+- `docs/SECURITY_PRIVACY.md`
+- `docs/SELF_HOSTING.md`
+- `docs/SETUP_WIZARD.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/integrations/ALERTMANAGER.md`
+- `docs/integrations/DATADOG.md`
+- `docs/integrations/GITHUB.md`
+- `docs/integrations/GITLAB.md`
+- `docs/integrations/OPENAI.md`
+- `docs/integrations/OPENTELEMETRY.md`
+- `docs/integrations/SENTRY.md`
+- `website/ABOUT.md`
+- `website/FEATURES.md`
+- `website/HOME.md`
+- `website/OSS.md`
+- `website/PRICING.md`

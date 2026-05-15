@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 120" role="img" aria-label="KafuOps wordmark">
+  <title>KafuOps</title>
+  <desc>The KafuOps wordmark: a square mark followed by 'kafu' in teal monospace and 'ops' on an amber pill.</desc>
+  <style>
+    .mono { font-family: 'JetBrains Mono','IBM Plex Mono','Fira Code',ui-monospace,monospace; font-weight: 700; }
+  </style>
+  <!-- Icon mark -->
+  <g transform="translate(8,12)">
+    <rect width="96" height="96" rx="18" ry="18" fill="#0F766E"/>
+    <g stroke="#F8FAFC" stroke-width="6" stroke-linecap="round" fill="none">
+      <line x1="48" y1="26" x2="26" y2="70"/>
+      <line x1="48" y1="26" x2="70" y2="70"/>
+      <line x1="26" y1="70" x2="70" y2="70"/>
+    </g>
+    <circle cx="48" cy="26" r="9" fill="#F8FAFC"/>
+    <circle cx="26" cy="70" r="9" fill="#F8FAFC"/>
+    <circle cx="70" cy="70" r="10" fill="#F59E0B"/>
+  </g>
+  <!-- Wordmark text -->
+  <text x="124" y="78" class="mono" font-size="56" fill="#0F766E">kafu</text>
+  <!-- Amber pill containing 'ops' -->
+  <g transform="translate(304,30)">
+    <rect width="148" height="64" rx="14" ry="14" fill="#F59E0B"/>
+    <text x="20" y="48" class="mono" font-size="40" fill="#0B1220">ops</text>
+  </g>
+</svg>

@@ -1,0 +1,36 @@
+# Example deployment placing KafuOps next to your backend.
+# Copy to docker-compose.yml, point `repo` mount at your code, and fill OPENAI_API_KEY / KAFUOPS_GIT_TOKEN.
+services:
+  api:
+    image: your-backend:latest
+    environment:
+      NODE_ENV: production
+    logging:
+      driver: json-file
+
+  kafuops-agent:
+    image: kafuops:latest
+    build: .
+    command: ["agent", "start"]
+    ports:
+      - "7878:7878"
+    environment:
+      KAFUOPS_CONFIG: /workspace/.kafuops.yml
+      KAFUOPS_WEBHOOK_SECRET: ${KAFUOPS_WEBHOOK_SECRET:-}
+    volumes:
+      - ./:/workspace
+    working_dir: /workspace
+
+  kafuops-worker:
+    image: kafuops:latest
+    build: .
+    command: ["worker", "start"]
+    environment:
+      KAFUOPS_CONFIG: /workspace/.kafuops.yml
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      KAFUOPS_GIT_TOKEN: ${KAFUOPS_GIT_TOKEN:-}
+    volumes:
+      - ./:/workspace
+    working_dir: /workspace
+    depends_on:
+      - kafuops-agent

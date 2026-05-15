@@ -1,0 +1,25 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+*.tsbuildinfo
+
+# Runtime state — only memory/ is committed; everything else is per-machine.
+.kafuops/audit/
+.kafuops/incidents/
+.kafuops/sandbox/
+.kafuops/policies/
+!.kafuops/memory/
+
+# Example app state — never commit a generated .kafuops/ under examples/.
+examples/**/.kafuops/
+
+# Secrets.
+.env
+.env.*
+!.env.example
+
+# Editor / OS junk.
+.vscode/
+.idea/

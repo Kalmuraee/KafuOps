@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="KafuOps logo">
+  <title>KafuOps logo</title>
+  <desc>A rounded teal square containing a stylized branching node with an amber incident dot.</desc>
+  <rect width="256" height="256" rx="44" ry="44" fill="#0F766E"/>
+  <!-- Three nodes connected by lines: top, lower-left, lower-right.
+       The lower-right node is the amber incident dot. -->
+  <g stroke="#F8FAFC" stroke-width="14" stroke-linecap="round" fill="none">
+    <line x1="128" y1="78" x2="78" y2="178"/>
+    <line x1="128" y1="78" x2="178" y2="178"/>
+    <line x1="78"  y1="178" x2="178" y2="178"/>
+  </g>
+  <circle cx="128" cy="78" r="20" fill="#F8FAFC"/>
+  <circle cx="78"  cy="178" r="20" fill="#F8FAFC"/>
+  <circle cx="178" cy="178" r="22" fill="#F59E0B"/>
+</svg>

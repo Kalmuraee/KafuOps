@@ -1,0 +1,14 @@
+{
+  "name": "sample-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "echo \"sample-app: no tests configured\" && exit 0"
+  },
+  "dependencies": {
+    "express": "^4.0.0",
+    "stripe": "^14.0.0",
+    "pg": "^8.0.0"
+  }
+}
