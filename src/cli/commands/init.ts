@@ -33,14 +33,18 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   }
 
   const fw = detectFramework(cwd);
-  // Default models. These are sensible cheap/strong picks that we know exist;
-  // bump them in the wizard or in `.kafuops.yml` to whatever your account
-  // currently has access to (the OpenAI catalog moves faster than this MVP).
-  const DEFAULT_ANALYSIS_MODEL = 'gpt-4o-mini';
-  const DEFAULT_PATCH_MODEL = 'gpt-4o';
+  // Per-provider model defaults. Bump in `.kafuops.yml` to whatever your
+  // account currently has access to (catalogs move faster than this MVP).
+  const DEFAULTS: Record<string, { analysis: string; patch: string }> = {
+    openai: { analysis: 'gpt-4o-mini', patch: 'gpt-4o' },
+    'azure-openai': { analysis: 'gpt-4o-mini', patch: 'gpt-4o' },
+    anthropic: { analysis: 'claude-haiku-4-5-20251001', patch: 'claude-sonnet-4-6' },
+    none: { analysis: 'gpt-4o-mini', patch: 'gpt-4o' },
+  };
 
   let answers: any;
   if (options.yes) {
+    const d = DEFAULTS['openai'];
     answers = {
       name: fw.service_name ?? path.basename(cwd),
       language: fw.language,
@@ -51,8 +55,9 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
       mode: 'wrapper',
       llmProvider: 'openai',
       openaiKey: '',
-      analysisModel: DEFAULT_ANALYSIS_MODEL,
-      patchModel: DEFAULT_PATCH_MODEL,
+      anthropicKey: '',
+      analysisModel: d.analysis,
+      patchModel: d.patch,
       install: fw.install_command ?? 'npm ci',
       testCommand: fw.test_command ?? 'npm test',
       sandboxType: 'local',
@@ -101,26 +106,35 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
           message: 'LLM provider',
           choices: [
             { title: 'OpenAI', value: 'openai' },
+            { title: 'Anthropic (Claude)', value: 'anthropic' },
             { title: 'Azure OpenAI', value: 'azure-openai' },
             { title: 'None for now', value: 'none' },
           ],
         },
         {
-          type: (prev: string) => (prev === 'openai' && !process.env.OPENAI_API_KEY ? 'password' : null),
+          type: (prev: string) =>
+            (prev === 'openai' || prev === 'azure-openai') && !process.env.OPENAI_API_KEY ? 'password' : null,
           name: 'openaiKey',
           message: 'OPENAI_API_KEY (stored in .kafuops/.env, gitignored)',
         },
         {
+          type: (prev: string) => (prev === 'anthropic' && !process.env.ANTHROPIC_API_KEY ? 'password' : null),
+          name: 'anthropicKey',
+          message: 'ANTHROPIC_API_KEY (stored in .kafuops/.env, gitignored)',
+        },
+        {
           type: 'text',
           name: 'analysisModel',
-          message: `Model for analysis (default ${DEFAULT_ANALYSIS_MODEL} — bump to your account's current model)`,
-          initial: DEFAULT_ANALYSIS_MODEL,
+          message: (_: unknown, values: any) =>
+            `Model for analysis (default ${DEFAULTS[values.llmProvider]?.analysis} — bump to your account's current model)`,
+          initial: (_: unknown, values: any) => DEFAULTS[values.llmProvider]?.analysis ?? DEFAULTS.openai.analysis,
         },
         {
           type: 'text',
           name: 'patchModel',
-          message: `Model for code patches (default ${DEFAULT_PATCH_MODEL} — bump to your account's current model)`,
-          initial: DEFAULT_PATCH_MODEL,
+          message: (_: unknown, values: any) =>
+            `Model for code patches (default ${DEFAULTS[values.llmProvider]?.patch} — bump to your account's current model)`,
+          initial: (_: unknown, values: any) => DEFAULTS[values.llmProvider]?.patch ?? DEFAULTS.openai.patch,
         },
         { type: 'text', name: 'install', message: 'Install command', initial: fw.install_command ?? 'npm ci' },
         { type: 'text', name: 'testCommand', message: 'Test command', initial: fw.test_command ?? 'npm test' },
@@ -173,6 +187,7 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   const envLines: string[] = [];
   if (answers.gitToken) envLines.push(`KAFUOPS_GIT_TOKEN=${answers.gitToken}`);
   if (answers.openaiKey) envLines.push(`OPENAI_API_KEY=${answers.openaiKey}`);
+  if (answers.anthropicKey) envLines.push(`ANTHROPIC_API_KEY=${answers.anthropicKey}`);
   if (envLines.length) {
     const envPath = path.join(paths.base, '.env');
     fs.writeFileSync(envPath, envLines.join('\n') + '\n', { mode: 0o600 });

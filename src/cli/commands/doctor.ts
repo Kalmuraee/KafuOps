@@ -51,6 +51,19 @@ export async function doctorCommand(): Promise<void> {
   if (config.llm.provider === 'none') {
     log.warn('llm.provider=none; analysis will use offline heuristics');
     warnings++;
+  } else if (config.llm.provider === 'anthropic') {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      log.warn('ANTHROPIC_API_KEY not set; LLM calls will run in dry-run mode');
+      warnings++;
+    } else {
+      const live = await checkAnthropicKey(config.llm.models.analysis);
+      if (live.ok) {
+        log.ok('LLM: ANTHROPIC_API_KEY verified');
+      } else {
+        log.error(`LLM: ANTHROPIC_API_KEY rejected by provider — ${live.error}`);
+        errors++;
+      }
+    }
   } else if (!process.env.OPENAI_API_KEY) {
     log.warn('OPENAI_API_KEY not set; LLM calls will run in dry-run mode');
     warnings++;
@@ -137,6 +150,47 @@ async function checkOpenAIKey(): Promise<
     const data = (await res.json()) as { data?: Array<{ id: string }> };
     const ids = new Set((data.data ?? []).map((m) => m.id));
     return { ok: true, modelCount: ids.size, modelIds: ids };
+  } catch (err) {
+    clearTimeout(timeout);
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/**
+ * Send a tiny messages.create() request to confirm the Anthropic key works.
+ * Anthropic doesn't expose a /models listing the way OpenAI does, so we make
+ * a 1-token completion as the cheapest possible probe.
+ */
+async function checkAnthropicKey(probeModel: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: probeModel,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ok' }],
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (res.status === 401 || res.status === 403) {
+      const body = (await res.text()).slice(0, 200);
+      return { ok: false, error: `HTTP ${res.status}: ${body}` };
+    }
+    if (!res.ok && res.status !== 400) {
+      // 400 with an "invalid model" body still confirms the key works, so we
+      // only treat non-auth failures above as fatal.
+      const body = (await res.text()).slice(0, 200);
+      return { ok: false, error: `HTTP ${res.status}: ${body}` };
+    }
+    return { ok: true };
   } catch (err) {
     clearTimeout(timeout);
     return { ok: false, error: (err as Error).message };

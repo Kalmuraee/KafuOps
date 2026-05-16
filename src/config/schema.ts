@@ -116,18 +116,20 @@ export const ConfigSchema = z.object({
 
   llm: z
     .object({
-      provider: z.enum(['openai', 'azure-openai', 'none']).default('openai'),
+      provider: z.enum(['openai', 'azure-openai', 'anthropic', 'none']).default('openai'),
       trigger_mode: z.enum(['incident_only', 'manual_only', 'off']).default('incident_only'),
       models: z
         .object({
           analysis: z.string().default('gpt-4o-mini'),
-          patch: z.string().default('gpt-4o-mini'),
+          patch: z.string().default('gpt-4o'),
         })
         .default({}),
       structured_outputs: z.boolean().default(true),
       max_context_files: z.number().int().positive().default(30),
       max_log_excerpt_chars: z.number().int().positive().default(12000),
       max_file_chars: z.number().int().positive().default(8000),
+      /** Anthropic only. The Messages API requires max_tokens explicitly. */
+      anthropic_max_tokens: z.number().int().positive().default(4096),
     })
     .default({}),
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { KafuOpsConfig } from '../config/schema.js';
 import {
   CodePatch,
@@ -45,6 +46,8 @@ const CodePatchSchema = z.object({
   new_test_files: z.array(z.string()).default([]),
 });
 
+export type LLMProvider = 'openai' | 'anthropic' | 'dry-run';
+
 export interface OrchestratorOptions {
   rootDir: string;
   config: KafuOpsConfig;
@@ -52,25 +55,56 @@ export interface OrchestratorOptions {
   dryRun?: boolean;
   /** Optional pre-constructed OpenAI client (useful for tests). */
   client?: OpenAI;
+  anthropicClient?: Anthropic;
 }
 
 export class LLMOrchestrator {
   private readonly audit: AuditLogger;
-  private readonly client: OpenAI | null;
+  private readonly openaiClient: OpenAI | null;
+  private readonly anthropicClient: Anthropic | null;
   private readonly dryRun: boolean;
+  private readonly activeProvider: LLMProvider;
 
   constructor(private readonly opts: OrchestratorOptions) {
     this.audit = new AuditLogger(opts.rootDir);
-    this.dryRun = !!opts.dryRun || opts.config.llm.provider === 'none' || !process.env.OPENAI_API_KEY;
-    if (this.dryRun) {
-      this.client = null;
+    const requested = opts.config.llm.provider;
+    // Decide which provider is actually usable. Honors trigger_mode: 'off' too.
+    const forceDryRun = !!opts.dryRun || requested === 'none' || opts.config.llm.trigger_mode === 'off';
+    if (forceDryRun) {
+      this.activeProvider = 'dry-run';
+      this.openaiClient = null;
+      this.anthropicClient = null;
+    } else if (requested === 'anthropic') {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        this.activeProvider = 'dry-run';
+        this.openaiClient = null;
+        this.anthropicClient = null;
+      } else {
+        this.activeProvider = 'anthropic';
+        this.openaiClient = null;
+        this.anthropicClient = opts.anthropicClient ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      }
     } else {
-      this.client = opts.client ?? new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      // openai or azure-openai → both use the OpenAI SDK shape.
+      if (!process.env.OPENAI_API_KEY) {
+        this.activeProvider = 'dry-run';
+        this.openaiClient = null;
+        this.anthropicClient = null;
+      } else {
+        this.activeProvider = 'openai';
+        this.openaiClient = opts.client ?? new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        this.anthropicClient = null;
+      }
     }
+    this.dryRun = this.activeProvider === 'dry-run';
   }
 
   isDryRun(): boolean {
     return this.dryRun;
+  }
+
+  getProvider(): LLMProvider {
+    return this.activeProvider;
   }
 
   async rootCause(incident: Incident, bundle: ContextBundle): Promise<RootCauseResult> {
@@ -174,23 +208,22 @@ Return JSON: { "text": "..." }`;
     incidentId: string;
     schema: z.ZodType<T>;
   }): Promise<T> {
-    if (!this.client) throw new Error('LLM client not initialized');
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: 'system', content: `${SYSTEM_BASE}\n${args.systemExtra}` },
-      { role: 'user', content: args.user },
-    ];
     const tokenEstimate = Math.ceil((args.user.length + SYSTEM_BASE.length) / 4);
-    log.debug(`LLM call purpose=${args.purpose} model=${args.model} ~${tokenEstimate} tokens`);
-    const completion = await this.client.chat.completions.create({
-      model: args.model,
-      messages,
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-    });
-    const text = completion.choices[0]?.message?.content ?? '{}';
+    log.debug(
+      `LLM call provider=${this.activeProvider} purpose=${args.purpose} model=${args.model} ~${tokenEstimate} tokens`,
+    );
+    let text: string;
+    if (this.activeProvider === 'openai') {
+      text = await this.callOpenAI(args);
+    } else if (this.activeProvider === 'anthropic') {
+      text = await this.callAnthropic(args);
+    } else {
+      throw new Error('LLM client not initialized');
+    }
+    const cleaned = extractJson(text);
     let parsed: unknown;
     try {
-      parsed = JSON.parse(text);
+      parsed = JSON.parse(cleaned);
     } catch (err) {
       throw new Error(`LLM did not return valid JSON for ${args.purpose}: ${(err as Error).message}`);
     }
@@ -209,6 +242,61 @@ Return JSON: { "text": "..." }`;
       response_summary: JSON.stringify(result.data).slice(0, 500),
     });
     return result.data;
+  }
+
+  private async callOpenAI(args: {
+    purpose: string;
+    model: string;
+    systemExtra: string;
+    user: string;
+  }): Promise<string> {
+    if (!this.openaiClient) throw new Error('OpenAI client not initialized');
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: `${SYSTEM_BASE}\n${args.systemExtra}` },
+      { role: 'user', content: args.user },
+    ];
+    const completion = await this.openaiClient.chat.completions.create({
+      model: args.model,
+      messages,
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+    });
+    return completion.choices[0]?.message?.content ?? '{}';
+  }
+
+  /**
+   * Anthropic adapter. Uses the standard Messages API and asks the model to
+   * return JSON. We do not use the beta `output_format` structured-outputs
+   * feature yet because the orchestrator already validates with zod and we
+   * want to keep the provider surface portable.
+   */
+  private async callAnthropic(args: {
+    purpose: string;
+    model: string;
+    systemExtra: string;
+    user: string;
+  }): Promise<string> {
+    if (!this.anthropicClient) throw new Error('Anthropic client not initialized');
+    const system = [
+      `${SYSTEM_BASE}\n${args.systemExtra}`,
+      'Reply with a single JSON object — no prose, no markdown fences, no preamble.',
+    ].join('\n');
+    const message = await this.anthropicClient.messages.create({
+      model: args.model,
+      max_tokens: this.opts.config.llm.anthropic_max_tokens,
+      temperature: 0.1,
+      system,
+      messages: [{ role: 'user', content: args.user }],
+    });
+    // Concatenate text blocks (Anthropic returns content as an array of blocks
+    // that may include text / tool_use / thinking blocks). We only want text.
+    const out: string[] = [];
+    for (const block of message.content) {
+      if (block.type === 'text' && 'text' in block) {
+        out.push((block as { text: string }).text);
+      }
+    }
+    return out.join('');
   }
 
   // -------- dry-run fakes -------- //
@@ -253,4 +341,23 @@ Return JSON: { "text": "..." }`;
       new_test_files: [],
     };
   }
+}
+
+/**
+ * Some providers (notably Anthropic) occasionally wrap JSON in ```json fences
+ * or add a sentence of preamble even when instructed not to. Strip those so we
+ * can hand a clean string to JSON.parse.
+ */
+function extractJson(text: string): string {
+  const trimmed = text.trim();
+  // ```json ... ```  or  ``` ... ```
+  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed);
+  if (fenced) return fenced[1].trim();
+  // First balanced { ... } in the response.
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
+  return trimmed;
 }
