@@ -6,6 +6,7 @@ import { detectFramework } from '../../scanner/framework.js';
 import { writeConfig } from '../../config/loader.js';
 import { ensureDirs, getPaths } from '../../util/paths.js';
 import { log } from '../../util/logger.js';
+// fs is already imported above; we reuse it here for the .env writer.
 
 export interface InitOptions {
   yes?: boolean;
@@ -32,6 +33,12 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   }
 
   const fw = detectFramework(cwd);
+  // Default models. These are sensible cheap/strong picks that we know exist;
+  // bump them in the wizard or in `.kafuops.yml` to whatever your account
+  // currently has access to (the OpenAI catalog moves faster than this MVP).
+  const DEFAULT_ANALYSIS_MODEL = 'gpt-4o-mini';
+  const DEFAULT_PATCH_MODEL = 'gpt-4o';
+
   let answers: any;
   if (options.yes) {
     answers = {
@@ -39,10 +46,13 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
       language: fw.language,
       framework: fw.framework,
       provider: 'none',
+      repoUrl: '',
+      gitToken: '',
       mode: 'wrapper',
       llmProvider: 'openai',
-      analysisModel: 'gpt-4o-mini',
-      patchModel: 'gpt-4o-mini',
+      openaiKey: '',
+      analysisModel: DEFAULT_ANALYSIS_MODEL,
+      patchModel: DEFAULT_PATCH_MODEL,
       install: fw.install_command ?? 'npm ci',
       testCommand: fw.test_command ?? 'npm test',
       sandboxType: 'local',
@@ -62,6 +72,17 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
             { title: 'GitLab', value: 'gitlab' },
             { title: 'None for now', value: 'none' },
           ],
+        },
+        {
+          type: (prev: string) => (prev === 'none' ? null : 'text'),
+          name: 'repoUrl',
+          message: 'Repository URL (e.g. git@github.com:org/api.git)',
+          initial: detectRepoUrl(cwd) ?? '',
+        },
+        {
+          type: (_: unknown, values: any) => (values.provider === 'none' ? null : 'password'),
+          name: 'gitToken',
+          message: 'Git access token (KAFUOPS_GIT_TOKEN — pasted, stored in .kafuops/.env, gitignored)',
         },
         {
           type: 'select',
@@ -84,8 +105,23 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
             { title: 'None for now', value: 'none' },
           ],
         },
-        { type: 'text', name: 'analysisModel', message: 'Model for analysis', initial: 'gpt-4o-mini' },
-        { type: 'text', name: 'patchModel', message: 'Model for code patches', initial: 'gpt-4o-mini' },
+        {
+          type: (prev: string) => (prev === 'openai' && !process.env.OPENAI_API_KEY ? 'password' : null),
+          name: 'openaiKey',
+          message: 'OPENAI_API_KEY (stored in .kafuops/.env, gitignored)',
+        },
+        {
+          type: 'text',
+          name: 'analysisModel',
+          message: `Model for analysis (default ${DEFAULT_ANALYSIS_MODEL} — bump to your account's current model)`,
+          initial: DEFAULT_ANALYSIS_MODEL,
+        },
+        {
+          type: 'text',
+          name: 'patchModel',
+          message: `Model for code patches (default ${DEFAULT_PATCH_MODEL} — bump to your account's current model)`,
+          initial: DEFAULT_PATCH_MODEL,
+        },
         { type: 'text', name: 'install', message: 'Install command', initial: fw.install_command ?? 'npm ci' },
         { type: 'text', name: 'testCommand', message: 'Test command', initial: fw.test_command ?? 'npm test' },
         {
@@ -111,7 +147,10 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
       service_name: answers.name,
       default_branch: 'main',
     },
-    repo: { provider: answers.provider },
+    repo: {
+      provider: answers.provider,
+      url: answers.repoUrl || undefined,
+    },
     runtime: { mode: answers.mode },
     llm: {
       provider: answers.llmProvider,
@@ -129,6 +168,18 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   const paths = getPaths(cwd);
   ensureDirs(paths);
 
+  // Write secrets to .kafuops/.env so they aren't committed and can be sourced
+  // by the user or read at runtime. Never write them to .kafuops.yml.
+  const envLines: string[] = [];
+  if (answers.gitToken) envLines.push(`KAFUOPS_GIT_TOKEN=${answers.gitToken}`);
+  if (answers.openaiKey) envLines.push(`OPENAI_API_KEY=${answers.openaiKey}`);
+  if (envLines.length) {
+    const envPath = path.join(paths.base, '.env');
+    fs.writeFileSync(envPath, envLines.join('\n') + '\n', { mode: 0o600 });
+    log.ok(`Wrote ${envPath} (mode 0600). Source it before running:`);
+    log.dim(`  export $(grep -v '^#' ${path.relative(cwd, envPath)} | xargs)`);
+  }
+
   log.ok(`Created ${configPath}`);
   log.ok(`Created ${paths.base}/`);
   log.info('');
@@ -136,4 +187,19 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   log.info('  kafuops doctor');
   log.info('  kafuops scan');
   log.info('  kafuops run -- <your backend command>');
+}
+
+/**
+ * Best-effort: parse `git remote get-url origin` so the wizard can pre-fill
+ * the repo URL if the directory is already a git checkout.
+ */
+function detectRepoUrl(cwd: string): string | null {
+  try {
+    const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+    const res = spawnSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], { encoding: 'utf8' });
+    if (res.status === 0 && res.stdout) return res.stdout.trim();
+  } catch {
+    // ignore
+  }
+  return null;
 }

@@ -10,6 +10,7 @@ coverage/
 .kafuops/incidents/
 .kafuops/sandbox/
 .kafuops/policies/
+.kafuops/.env
 !.kafuops/memory/
 
 # Example app state — never commit a generated .kafuops/ under examples/.

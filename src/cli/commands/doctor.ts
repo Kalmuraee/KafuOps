@@ -46,7 +46,8 @@ export async function doctorCommand(): Promise<void> {
     warnings++;
   }
 
-  // LLM
+  // LLM — verify the key actually works against the provider. Just checking that
+  // the env var is set used to mislead users into thinking dry-run mode was active.
   if (config.llm.provider === 'none') {
     log.warn('llm.provider=none; analysis will use offline heuristics');
     warnings++;
@@ -54,7 +55,21 @@ export async function doctorCommand(): Promise<void> {
     log.warn('OPENAI_API_KEY not set; LLM calls will run in dry-run mode');
     warnings++;
   } else {
-    log.ok('LLM: OPENAI_API_KEY detected');
+    const live = await checkOpenAIKey();
+    if (live.ok) {
+      log.ok(`LLM: OPENAI_API_KEY verified (account has access to ${live.modelCount} models)`);
+      const requested = [config.llm.models.analysis, config.llm.models.patch];
+      const missing = requested.filter((m) => !live.modelIds.has(m));
+      if (missing.length) {
+        log.warn(
+          `Configured model(s) not visible to this key: ${missing.join(', ')}. Update .kafuops.yml or check account access.`,
+        );
+        warnings++;
+      }
+    } else {
+      log.error(`LLM: OPENAI_API_KEY rejected by provider — ${live.error}`);
+      errors++;
+    }
   }
 
   // Redaction
@@ -96,4 +111,34 @@ export async function doctorCommand(): Promise<void> {
   else if (warnings) log.warn(`Doctor: ${warnings} warning(s)`);
   else log.ok('Doctor: all checks passed');
   if (errors) process.exit(2);
+}
+
+/**
+ * Make a tiny live request to OpenAI to confirm the key is active and to read
+ * back the list of accessible model IDs. Times out after 8s so doctor never
+ * hangs on network problems.
+ */
+async function checkOpenAIKey(): Promise<
+  | { ok: true; modelCount: number; modelIds: Set<string> }
+  | { ok: false; error: string }
+> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 200);
+      return { ok: false, error: `HTTP ${res.status}: ${body}` };
+    }
+    const data = (await res.json()) as { data?: Array<{ id: string }> };
+    const ids = new Set((data.data ?? []).map((m) => m.id));
+    return { ok: true, modelCount: ids.size, modelIds: ids };
+  } catch (err) {
+    clearTimeout(timeout);
+    return { ok: false, error: (err as Error).message };
+  }
 }
