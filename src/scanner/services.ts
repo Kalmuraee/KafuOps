@@ -44,22 +44,48 @@ const PY_QUEUE_PACKAGES = [
 
 export function discoverServices(rootDir: string, entries: FileEntry[]): ServiceInfo[] {
   const out: ServiceInfo[] = [];
-  const files = filterFiles(entries, ['.ts', '.tsx', '.js', '.mjs']);
+  const files = filterFiles(entries, ['.ts', '.tsx', '.js', '.mjs', '.py']);
   for (const f of files) {
+    const isPy = f.path.toLowerCase().endsWith('.py');
+    if (isPy && isPythonTestPath(f.path)) continue;
     const name = path.basename(f.path).toLowerCase();
     const dir = path.dirname(f.path).toLowerCase();
-    let kind: ServiceInfo['kind'] | null = null;
-    if (name.includes('controller') || dir.includes('controllers') || dir.includes('routes')) kind = 'controller';
-    else if (name.includes('service') || dir.includes('services')) kind = 'service';
-    else if (name.includes('repository') || name.includes('repo') || dir.includes('repositories')) kind = 'repository';
-    else if (name.includes('worker') || name.includes('consumer') || dir.includes('workers') || dir.includes('consumers')) kind = 'consumer';
-    else if (name.includes('client') || dir.includes('clients')) kind = 'client';
-    else if (name.includes('job') || dir.includes('jobs') || dir.includes('cron')) kind = 'job';
+    let kind: ServiceInfo['kind'] | null = classifyByPath(name, dir);
+    // Python: also classify by class declarations (class FooService / FooRepository).
+    if (!kind && isPy) {
+      const src = readSafe(path.join(rootDir, f.path));
+      if (src) {
+        if (/class\s+\w*Service\b/.test(src)) kind = 'service';
+        else if (/class\s+\w*(Repository|Repo)\b/.test(src)) kind = 'repository';
+        else if (/class\s+\w*Controller\b/.test(src)) kind = 'controller';
+        else if (/class\s+\w*(Worker|Consumer)\b/.test(src)) kind = 'consumer';
+        else if (/class\s+\w*Client\b/.test(src)) kind = 'client';
+      }
+    }
     if (kind) {
       out.push({ name: path.basename(f.path, path.extname(f.path)), file: f.path, kind });
     }
   }
   return out;
+}
+
+function classifyByPath(name: string, dir: string): ServiceInfo['kind'] | null {
+  if (name.includes('controller') || dir.includes('controllers') || dir.includes('routes')) return 'controller';
+  if (name.includes('service') || dir.includes('services')) return 'service';
+  if (name.includes('repository') || name.includes('repo') || dir.includes('repositories')) return 'repository';
+  if (name.includes('worker') || name.includes('consumer') || dir.includes('workers') || dir.includes('consumers')) return 'consumer';
+  if (name.includes('client') || dir.includes('clients')) return 'client';
+  if (name.includes('job') || dir.includes('jobs') || dir.includes('cron')) return 'job';
+  return null;
+}
+
+function isPythonTestPath(file: string): boolean {
+  const lower = file.replace(/\\/g, '/').toLowerCase();
+  if (lower.startsWith('tests/') || lower.includes('/tests/') || lower.startsWith('test/') || lower.includes('/test/')) {
+    return true;
+  }
+  const base = lower.split('/').pop() ?? '';
+  return base.startsWith('test_') || base.endsWith('_test.py');
 }
 
 export function detectDependencies(rootDir: string, pkgJson: Record<string, unknown> | null): DependencyInfo {
