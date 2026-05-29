@@ -2,6 +2,28 @@
 
 ## 0.2.0 — close the loop
 
+### Hardening (follow-up)
+
+- **CI**: GitHub Actions build + test on Node 20/22 for every push/PR.
+- **End-to-end fix proof**: a mocked-provider test applies a generated diff to a
+  buggy fixture and asserts the failing test goes green (`tests/e2e-fix.test.ts`),
+  via a new orchestrator-injection seam in the pipeline.
+- **Worker concurrency safety**: atomic incident claiming (lock file with
+  stale-steal) so multiple workers can't double-process.
+- **Tailer durability**: per-file byte offsets persisted across restarts (no
+  re-read, no gap, clean rotation reset).
+- **OTLP**: non-JSON (protobuf) bodies rejected with a clear 415.
+- **Similar-incident matching**: prior incidents sharing a fingerprint/frame are
+  retrieved into context (`related_incidents` + memory snippet).
+- **Embedded Node SDK** (`installErrorReporter`/`reportError`), exported from the
+  package root (also fixes the previously-dangling `main`). See `docs/NODE_SDK.md`.
+- **Prompt-injection contract tests**; per-page docs synced (CLI, OTel, SDK).
+
+A first-class Kubernetes operator/CRD is deliberately deferred (the Helm chart +
+manifests already cover deployment).
+
+## 0.2.0 — close the loop (initial)
+
 Turns the MVP into the product the README describes: the agent now *observes* a
 live system and *autonomously* drives incidents to MRs, and the safety promises
 are enforced by code.
