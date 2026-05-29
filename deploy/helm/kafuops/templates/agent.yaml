@@ -1,0 +1,80 @@
+{{- if .Values.agent.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-kafuops-agent
+  labels:
+    {{- include "kafuops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  replicas: {{ .Values.agent.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafuops
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafuops
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["agent", "start"]
+          workingDir: /workspace
+          env:
+            - name: KAFUOPS_CONFIG
+              value: /workspace/.kafuops.yml
+          envFrom:
+            - secretRef:
+                name: {{ include "kafuops.secretName" . }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.server.port | default 7878 }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.agent.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /workspace/.kafuops.yml
+              subPath: .kafuops.yml
+            - name: state
+              mountPath: /workspace/.kafuops
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-kafuops-config
+        - name: state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-kafuops-agent
+  labels:
+    {{- include "kafuops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  type: {{ .Values.agent.service.type }}
+  selector:
+    app.kubernetes.io/name: kafuops
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: agent
+  ports:
+    - name: http
+      port: {{ .Values.agent.service.port }}
+      targetPort: http
+{{- end }}

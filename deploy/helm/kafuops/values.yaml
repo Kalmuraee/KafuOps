@@ -1,0 +1,70 @@
+image:
+  repository: ghcr.io/kalmuraee/kafuops
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Secrets. Prefer `existingSecret` (created out-of-band) over inline values.
+secrets:
+  existingSecret: ""        # name of a pre-created Secret with the keys below
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  gitToken: ""
+  webhookSecret: ""
+
+# The .kafuops.yml mounted into both agent and worker. Provide the whole file.
+config:
+  version: 1
+  project:
+    name: my-backend
+    language: typescript
+    framework: express
+  repo:
+    provider: github
+    url: https://github.com/your-org/your-backend.git
+    default_branch: main
+    mr:
+      enabled: true
+      auto_create: true
+      auto_merge: false
+  runtime:
+    mode: kubernetes
+    log_sources: []
+  observability:
+    opentelemetry:
+      enabled: true
+    logs:
+      enabled: true
+  llm:
+    provider: anthropic
+    trigger_mode: incident_only
+  sandbox:
+    type: local
+    install_command: npm ci
+    test_command: npm test
+  server:
+    host: 0.0.0.0
+    port: 7878
+    webhook_secret_env: KAFUOPS_WEBHOOK_SECRET
+
+agent:
+  enabled: true
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 7878
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+worker:
+  enabled: true
+  replicas: 1
+  intervalSeconds: 30
+  # Clone the target repo into the worker workspace via an initContainer.
+  repoCloneUrl: https://github.com/your-org/your-backend.git
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }

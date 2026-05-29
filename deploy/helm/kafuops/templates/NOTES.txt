@@ -1,0 +1,19 @@
+KafuOps {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}".
+
+{{ if .Values.agent.enabled -}}
+Agent intake Service:
+  {{ .Release.Name }}-kafuops-agent.{{ .Release.Namespace }}:{{ .Values.agent.service.port }}
+
+Point your alerting/telemetry at it:
+  Sentry/Datadog : POST /v1/webhooks/{sentry,datadog}   (HMAC, KAFUOPS_WEBHOOK_SECRET)
+  Alertmanager   : POST /v1/webhooks/alertmanager        (bearer KAFUOPS_WEBHOOK_SECRET)
+  OpenTelemetry  : POST /v1/otel/traces                  (config.observability.opentelemetry.enabled)
+{{- end }}
+
+{{ if .Values.worker.enabled -}}
+Worker is polling every {{ .Values.worker.intervalSeconds }}s and will open MRs
+when policy + confidence gates pass (auto_merge={{ .Values.config.repo.mr.auto_merge }}).
+{{- end }}
+
+Set at least one of OPENAI_API_KEY / ANTHROPIC_API_KEY (and KAFUOPS_GIT_TOKEN for
+real MRs) — otherwise KafuOps runs in safe dry-run mode.
