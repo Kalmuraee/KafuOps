@@ -150,9 +150,10 @@ const policies = program.command('policies').description('Inspect policy decisio
 policies.command('validate').action(policiesValidate);
 policies
   .command('explain')
-  .description('Explain the policy decision for a file path.')
-  .requiredOption('--file <path>', 'repo-relative file path')
-  .action(async (opts) => policiesExplain(opts.file));
+  .description('Explain the policy decision for a file path or an incident’s changed files.')
+  .option('--file <path>', 'repo-relative file path')
+  .option('--incident <id>', 'explain decisions for an incident’s changed files')
+  .action(async (opts) => policiesExplain({ file: opts.file, incident: opts.incident }));
 
 const audit = program.command('audit').description('Inspect model-call audit log.');
 audit.command('list').action(auditList);

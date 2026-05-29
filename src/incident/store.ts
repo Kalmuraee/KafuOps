@@ -77,4 +77,19 @@ export class IncidentStore {
       return null;
     }
   }
+
+  /** Persist the files a patch actually changed (used by `policies explain --incident`). */
+  saveChangedFiles(incidentId: string, files: string[]): string {
+    return this.writeArtifact(incidentId, 'changed-files.json', JSON.stringify(files, null, 2));
+  }
+
+  loadChangedFiles(incidentId: string): string[] | null {
+    const file = path.join(this.dir(incidentId), 'changed-files.json');
+    if (!fs.existsSync(file)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8')) as string[];
+    } catch {
+      return null;
+    }
+  }
 }

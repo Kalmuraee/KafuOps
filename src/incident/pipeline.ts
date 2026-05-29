@@ -102,6 +102,7 @@ export async function processIncidentToMr(
   }
 
   const filesChanged = sb.filesChanged.length ? sb.filesChanged : plan.files_to_modify;
+  store.saveChangedFiles(inc.id, filesChanged);
   const confidence = scoreConfidence(
     {
       incident: inc,

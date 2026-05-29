@@ -262,14 +262,16 @@ Return JSON: { "text": "..." }`;
         `LLM response did not match schema for ${args.purpose}: ${result.error.issues.map((i) => i.message).join(', ')}`,
       );
     }
-    this.audit.record({
-      incident_id: args.incidentId,
-      purpose: args.purpose,
-      model: args.model,
-      bundle: args.bundle,
-      prompt_token_estimate: tokenEstimate,
-      response_summary: JSON.stringify(result.data).slice(0, 500),
-    });
+    if (this.opts.config.privacy.audit_model_context) {
+      this.audit.record({
+        incident_id: args.incidentId,
+        purpose: args.purpose,
+        model: args.model,
+        bundle: args.bundle,
+        prompt_token_estimate: tokenEstimate,
+        response_summary: JSON.stringify(result.data).slice(0, 500),
+      });
+    }
     return result.data;
   }
 
@@ -287,7 +289,9 @@ Return JSON: { "text": "..." }`;
     const completion = await this.openaiClient.chat.completions.create({
       model: args.model,
       messages,
-      response_format: { type: 'json_object' },
+      // Use OpenAI's JSON mode only when structured_outputs is enabled; otherwise
+      // rely on the prompt (some models / gateways don't support response_format).
+      response_format: this.opts.config.llm.structured_outputs ? { type: 'json_object' } : undefined,
       temperature: 0.1,
     });
     return completion.choices[0]?.message?.content ?? '{}';

@@ -66,13 +66,18 @@ export const ConfigSchema = z.object({
   runtime: z
     .object({
       mode: z.enum(['sidecar', 'wrapper', 'webhook', 'kubernetes']).default('wrapper'),
+      // RESERVED: KafuOps does not manage your service process (sidecar model).
+      // Kept for forward-compat / documentation; not consumed by any command.
       service_command: z.string().nullable().default(null),
+      // Consumed by `agent start` (file sources are tailed). stdout/stderr sources
+      // apply to wrapper mode where KafuOps owns the child process.
       log_sources: z.array(LogSourceSchema).default([{ type: 'stdout' }]),
     })
     .default({}),
 
   observability: z
     .object({
+      // Consumed by the OTLP receiver in webhooks/server.ts (POST /v1/otel/traces).
       opentelemetry: z
         .object({
           enabled: z.boolean().default(false),
@@ -81,6 +86,7 @@ export const ConfigSchema = z.object({
         .default({}),
       logs: z
         .object({
+          // Gates sidecar log tailing in `agent start`.
           enabled: z.boolean().default(true),
           ring_buffer: z
             .object({
@@ -93,6 +99,9 @@ export const ConfigSchema = z.object({
             .default({}),
         })
         .default({}),
+      // ADVISORY: which provider intakes you intend to use. Endpoints are always
+      // mounted and authenticated (HMAC/bearer); these flags document intent and
+      // are surfaced by `kafuops doctor`. They do not disable the routes.
       webhooks: z
         .object({
           sentry: z.boolean().default(false),
@@ -135,11 +144,18 @@ export const ConfigSchema = z.object({
 
   privacy: z
     .object({
+      // Redact webhook intake before storage (applied in webhooks/server.ts).
       redact_before_storage: z.boolean().default(true),
+      // Redact context before any LLM call (applied in context/builder.ts).
       redact_before_llm: z.boolean().default(true),
+      // When true, every model call is recorded to .kafuops/audit/model-calls/.
       audit_model_context: z.boolean().default(true),
+      // INVARIANT (not a knob): KafuOps never sends full logs or the full repo
+      // to the model. Typed as literal(false) so config cannot turn it on.
       send_full_logs_to_llm: z.literal(false).default(false),
       send_full_repo_to_llm: z.literal(false).default(false),
+      // Enforced via file_policy.deny + policies.never_modify (sensitive paths
+      // are excluded from context and never modified).
       require_allowlist_for_sensitive_paths: z.boolean().default(true),
     })
     .default({}),
@@ -174,11 +190,15 @@ export const ConfigSchema = z.object({
 
   sandbox: z
     .object({
+      // 'docker' runs install/test in a container (falls back to local if no
+      // daemon); 'local' runs in an rsync copy. See sandbox/runner.ts.
       type: z.enum(['local', 'docker']).default('local'),
       image: z.string().default('node:22'),
       install_command: z.string().default('npm ci'),
       test_command: z.string().default('npm test'),
+      // Run a focused test for the changed test file before the full suite.
       targeted_test_command: z.string().default('npm test -- {test_file}'),
+      // RESERVED: sandbox copies live under .kafuops/sandbox/<id> (util/paths.ts).
       working_dir: z.string().default('.kafuops/sandbox'),
       timeout_seconds: z.number().int().positive().default(300),
     })
@@ -189,10 +209,13 @@ export const ConfigSchema = z.object({
       model_calls: z
         .object({
           require_incident: z.boolean().default(true),
+          // Enforced in llm/orchestrator.ts: refuse live calls on un-redacted context.
           require_redaction: z.boolean().default(true),
           audit_every_call: z.boolean().default(true),
         })
         .default({}),
+      // RESERVED: MR behavior is driven by repo.mr.* (auto_create / auto_merge),
+      // which is the single source of truth (see mr/decide.ts). Kept for clarity.
       merge_requests: z
         .object({
           auto_create: z.boolean().default(true),
