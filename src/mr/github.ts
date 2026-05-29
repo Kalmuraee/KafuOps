@@ -61,14 +61,19 @@ export async function openGithubPr(opts: GithubPushOpts): Promise<MrCreateResult
   await git.push('kafuops', opts.payload.branch);
 
   const octokit = new Octokit({ auth: token });
-  const pr = await octokit.pulls.create({
-    owner: parsed.owner,
-    repo: parsed.repo,
-    title: opts.payload.title,
-    body: opts.payload.body,
-    head: opts.payload.branch,
-    base: opts.payload.base,
-  });
+  let pr;
+  try {
+    pr = await octokit.pulls.create({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      title: opts.payload.title,
+      body: opts.payload.body,
+      head: opts.payload.branch,
+      base: opts.payload.base,
+    });
+  } catch (err) {
+    throw new Error(`GitHub PR creation failed: ${(err as Error).message}`);
+  }
   try {
     if (opts.payload.labels.length) {
       await octokit.issues.addLabels({
@@ -88,4 +93,13 @@ export async function openGithubPr(opts: GithubPushOpts): Promise<MrCreateResult
     branch: opts.payload.branch,
     dry_run: false,
   };
+}
+
+/** Merge a previously opened PR (used only when repo.mr.auto_merge is true). */
+export async function mergeGithubPr(opts: { config: KafuOpsConfig; number: number; token?: string }): Promise<void> {
+  const token = opts.token ?? process.env.KAFUOPS_GIT_TOKEN ?? process.env.GITHUB_TOKEN;
+  const parsed = parseGithubUrl(opts.config.repo.url ?? '');
+  if (!token || !parsed) throw new Error('cannot auto-merge: missing token or repo.url');
+  const octokit = new Octokit({ auth: token });
+  await octokit.pulls.merge({ owner: parsed.owner, repo: parsed.repo, pull_number: opts.number });
 }

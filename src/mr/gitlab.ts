@@ -81,3 +81,16 @@ export async function openGitlabMr(opts: GitlabPushOpts): Promise<MrCreateResult
     dry_run: false,
   };
 }
+
+/** Merge a previously opened MR (used only when repo.mr.auto_merge is true). */
+export async function mergeGitlabMr(opts: { config: KafuOpsConfig; iid: number; token?: string }): Promise<void> {
+  const token = opts.token ?? process.env.KAFUOPS_GIT_TOKEN ?? process.env.GITLAB_TOKEN;
+  const parsed = parseGitlabUrl(opts.config.repo.url ?? '');
+  if (!token || !parsed) throw new Error('cannot auto-merge: missing token or repo.url');
+  const apiBase = opts.config.repo.base_url ?? `https://${parsed.host}`;
+  const res = await fetch(
+    `${apiBase}/api/v4/projects/${encodeURIComponent(parsed.projectPath)}/merge_requests/${opts.iid}/merge`,
+    { method: 'PUT', headers: { 'PRIVATE-TOKEN': token } },
+  );
+  if (!res.ok) throw new Error(`GitLab merge failed: ${res.status} ${await res.text()}`);
+}

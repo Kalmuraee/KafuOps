@@ -4,6 +4,7 @@ import { IncidentEngine } from '../../incident/engine.js';
 import { IncidentStore } from '../../incident/store.js';
 import { LogTailer } from '../../runtime/tailer.js';
 import { persistIncidentLogs } from '../../runtime/capture.js';
+import { runWorkerLoop } from '../../incident/worker.js';
 import { log } from '../../util/logger.js';
 import { RuntimeEvent } from '../../types/index.js';
 
@@ -47,15 +48,21 @@ export async function agentStart(opts: { port?: number }): Promise<void> {
 }
 
 /**
- * `kafuops worker start` — placeholder. Replaced by the real background loop in
- * a later change; for now it stays up so the agent can be driven by CLI.
+ * `kafuops worker start` — background analysis loop. Polls the incident store
+ * and drives each pending incident through the analyze → patch → validate → MR
+ * pipeline automatically (invocation='auto', so llm.trigger_mode=manual_only is
+ * respected). Use --once for a single pass, --interval to tune the cadence.
  */
-export async function workerStart(): Promise<void> {
-  const { config } = loadConfigOrExit();
+export async function workerStart(opts: { intervalSeconds?: number; once?: boolean } = {}): Promise<void> {
+  const { config, rootDir } = loadConfigOrExit();
   log.banner(`KafuOps worker — analysis pipeline ready`);
   log.info(
     `LLM provider: ${config.llm.provider}, models: analysis=${config.llm.models.analysis} patch=${config.llm.models.patch}`,
   );
-  log.info('Worker idle. Drive analysis with `kafuops incidents analyze <id>` or `open-mr <id>`.');
-  process.stdin.resume();
+  await runWorkerLoop({
+    rootDir,
+    config,
+    intervalSeconds: opts.intervalSeconds,
+    once: opts.once,
+  });
 }

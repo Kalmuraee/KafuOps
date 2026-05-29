@@ -82,8 +82,10 @@ agent
 const worker = program.command('worker').description('Analysis + patch worker.');
 worker
   .command('start')
-  .description('Start the worker.')
-  .action(workerStart);
+  .description('Start the background worker that drives pending incidents to MRs.')
+  .option('--interval <seconds>', 'poll interval in seconds', (v) => Number(v))
+  .option('--once', 'process pending incidents once, then exit')
+  .action((opts) => workerStart({ intervalSeconds: opts.interval, once: !!opts.once }));
 
 const incidents = program.command('incidents').description('Manage incidents.');
 incidents.command('list').description('List incidents.').action(listIncidents);
