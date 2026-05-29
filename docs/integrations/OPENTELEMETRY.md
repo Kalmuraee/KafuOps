@@ -1,6 +1,32 @@
 # OpenTelemetry Integration
 
-OpenTelemetry should be the preferred native telemetry format for KafuOps.
+OpenTelemetry is a native telemetry input for KafuOps.
+
+## Receiver (implemented)
+
+KafuOps exposes an **OTLP/HTTP JSON** trace receiver on the agent:
+
+```
+POST /v1/otel/traces      (Content-Type: application/json)
+```
+
+Enable it in config:
+
+```yaml
+observability:
+  opentelemetry:
+    enabled: true           # the endpoint returns 404 until enabled
+```
+
+Point an OpenTelemetry Collector at it with the OTLP HTTP exporter (JSON
+encoding). For each span that has an **error status** (`status.code == 2`) or an
+**`exception` span event**, KafuOps emits a redacted incident event, extracting
+`exception.type` / `exception.message` / `exception.stacktrace` and the route
+(`http.route`). If `KAFUOPS_WEBHOOK_SECRET` is set, the endpoint also requires an
+`Authorization: Bearer <secret>` header.
+
+> **Note:** only the OTLP **JSON** encoding is parsed today. A collector
+> configured for protobuf gets a clear `415` response — set the exporter to JSON.
 
 ## Supported signals
 
