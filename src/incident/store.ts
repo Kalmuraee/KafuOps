@@ -78,6 +78,50 @@ export class IncidentStore {
     }
   }
 
+  /**
+   * Atomically claim an incident for processing so concurrent workers don't
+   * double-process it. Uses an exclusive-create lock file (`wx`), which is atomic
+   * on a local filesystem. A lock older than `staleMs` (default 30 min) is
+   * treated as abandoned (crashed worker) and stolen. Returns true if claimed.
+   */
+  tryClaim(incidentId: string, staleMs = 30 * 60 * 1000): boolean {
+    const d = this.dir(incidentId);
+    fs.mkdirSync(d, { recursive: true });
+    const lock = path.join(d, '.claim.lock');
+    const write = (): boolean => {
+      try {
+        const fd = fs.openSync(lock, 'wx');
+        fs.writeSync(fd, new Date().toISOString());
+        fs.closeSync(fd);
+        return true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false;
+        throw err;
+      }
+    };
+    if (write()) return true;
+    // Lock exists — steal it only if it is stale.
+    try {
+      const age = Date.now() - fs.statSync(lock).mtimeMs;
+      if (age > staleMs) {
+        fs.rmSync(lock, { force: true });
+        return write(); // may still lose a race with another stealer → false
+      }
+    } catch {
+      // Lock vanished underneath us; fall through to a best-effort claim.
+      return write();
+    }
+    return false;
+  }
+
+  releaseClaim(incidentId: string): void {
+    try {
+      fs.rmSync(path.join(this.dir(incidentId), '.claim.lock'), { force: true });
+    } catch {
+      // best-effort
+    }
+  }
+
   /** Persist the files a patch actually changed (used by `policies explain --incident`). */
   saveChangedFiles(incidentId: string, files: string[]): string {
     return this.writeArtifact(incidentId, 'changed-files.json', JSON.stringify(files, null, 2));
