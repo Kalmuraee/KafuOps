@@ -16,9 +16,11 @@ export function parseGitlabUrl(
   url: string,
 ): { host: string; projectPath: string } | null {
   // ssh: git@gitlab.com:org/sub/repo.git  https: https://gitlab.com/org/sub/repo.git
-  const ssh = /^(?:[\w-]+@)?([\w.-]+):(.+?)(?:\.git)?$/.exec(url);
+  // Try https first — an https URL also matches the ssh shape ("https" as host,
+  // ":" as separator), so checking ssh first would misparse it.
   const https = /^https?:\/\/([\w.-]+)\/(.+?)(?:\.git)?\/?$/.exec(url);
-  const m = ssh || https;
+  const ssh = /^(?:[\w-]+@)?([\w.-]+):(.+?)(?:\.git)?$/.exec(url);
+  const m = https || ssh;
   if (!m) return null;
   return { host: m[1], projectPath: m[2] };
 }

@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.0 — close the loop
+
+Turns the MVP into the product the README describes: the agent now *observes* a
+live system and *autonomously* drives incidents to MRs, and the safety promises
+are enforced by code.
+
+Added / fixed:
+
+- **Runtime → context wiring.** The wrapper ring buffer is persisted per incident
+  and consumed by the context builder (was: only the last 50 raw events). New
+  **sidecar file tailing** (`agent start` tails `runtime.log_sources`).
+- **Autonomous worker.** `worker start` is a real background loop
+  (`--interval`/`--once`) that drives pending incidents through
+  analyse → patch → validate → MR. `auto_create`/`auto_merge` are now real knobs.
+- **Learning loop.** Per-incident history (`incidents.md`) and human review
+  feedback (`review-feedback.md`, via `incidents mark-merged`/`mark-rejected`)
+  are written and fed back into context.
+- **LLM safety.** `trigger_mode` (`off`/`manual_only`/`incident_only`) fully
+  enforced; `require_redaction` is a hard gate on live calls; `audit_model_context`
+  and `structured_outputs` honored.
+- **Webhook safety + OTel.** `/v1/incidents` now redacts intake; Alertmanager
+  endpoint requires a bearer token (fail-closed); new OpenTelemetry OTLP receiver
+  (`POST /v1/otel/traces`).
+- **Multi-language scanning.** Route discovery for Go (gin/echo/chi/net-http),
+  Java (Spring), and Rust (actix/rocket/axum); Python service discovery; Go/Java/
+  Rust import edges; a real architecture-graph Markdown.
+- **Docker sandbox.** `sandbox.type: docker` runs install/test in a container
+  (falls back to local); `targeted_test_command` is wired.
+- **Kubernetes deployment.** `deploy/kubernetes/` manifests + `deploy/helm/kafuops/`
+  chart (agent + worker). `KAFUOPS_CONFIG` env var now honored.
+- **`policies explain --incident`**; GitLab HTTPS URL parsing bug fixed; MR/sandbox
+  test coverage added.
+
 ## 0.1.0 — MVP implementation
 
 First runnable cut of the system described in the original blueprint.
