@@ -7,6 +7,7 @@ import { RuntimeEvent } from '../types/index.js';
 import { Redactor } from '../redaction/index.js';
 import { RingBuffer } from './ringbuffer.js';
 import { parseErrorBlock, ParsedError, fingerprint } from './parser.js';
+import { getPaths } from '../util/paths.js';
 import { log } from '../util/logger.js';
 
 export interface LogTailerOptions {
@@ -42,6 +43,7 @@ export class LogTailer extends EventEmitter {
   private readonly cursors: FileCursor[] = [];
   private timer: NodeJS.Timeout | null = null;
   private readonly pollIntervalMs: number;
+  private readonly statePath: string;
 
   constructor(private readonly opts: LogTailerOptions) {
     super();
@@ -52,6 +54,26 @@ export class LogTailer extends EventEmitter {
     });
     this.redactor = opts.redactor ?? new Redactor(opts.config);
     this.pollIntervalMs = opts.pollIntervalMs ?? 1000;
+    this.statePath = path.join(getPaths(opts.rootDir).base, 'tailer-state.json');
+  }
+
+  private loadOffsets(): Record<string, number> {
+    try {
+      return JSON.parse(fs.readFileSync(this.statePath, 'utf8')) as Record<string, number>;
+    } catch {
+      return {};
+    }
+  }
+
+  private saveOffsets(): void {
+    const map: Record<string, number> = {};
+    for (const c of this.cursors) map[c.abs] = c.offset;
+    try {
+      fs.mkdirSync(path.dirname(this.statePath), { recursive: true });
+      fs.writeFileSync(this.statePath, JSON.stringify(map, null, 2));
+    } catch (err) {
+      log.debug(`tailer: could not persist offsets: ${(err as Error).message}`);
+    }
   }
 
   getBuffer(): RingBuffer {
@@ -64,6 +86,7 @@ export class LogTailer extends EventEmitter {
   }
 
   start(): void {
+    const persisted = this.loadOffsets();
     for (const src of this.opts.sources) {
       if (src.type !== 'file') {
         // stdout/stderr sources only make sense in wrapper mode where we own the
@@ -72,12 +95,17 @@ export class LogTailer extends EventEmitter {
         continue;
       }
       const abs = path.isAbsolute(src.path) ? src.path : path.join(this.opts.rootDir, src.path);
-      let offset = 0;
+      let size = 0;
       try {
-        offset = fs.statSync(abs).size; // start at end — only new lines
+        size = fs.statSync(abs).size;
       } catch {
         log.warn(`log tailer: source not found yet, will watch for creation: ${abs}`);
       }
+      // Resume from the persisted offset across restarts (no re-read, no gap).
+      // A persisted offset beyond current size means the file was rotated → start
+      // fresh. No persisted offset (first run) → start at EOF.
+      const saved = persisted[abs];
+      const offset = saved != null && saved <= size ? saved : size;
       this.cursors.push({ abs, offset, partial: '', recent: [] });
     }
     if (!this.cursors.length) return;
@@ -91,9 +119,11 @@ export class LogTailer extends EventEmitter {
       clearInterval(this.timer);
       this.timer = null;
     }
+    this.saveOffsets();
   }
 
   private poll(): void {
+    let advanced = false;
     for (const cursor of this.cursors) {
       let size: number;
       try {
@@ -119,8 +149,10 @@ export class LogTailer extends EventEmitter {
         continue;
       }
       cursor.offset = size;
+      advanced = true;
       this.consume(cursor, chunk);
     }
+    if (advanced) this.saveOffsets();
   }
 
   private consume(cursor: FileCursor, chunk: string): void {
