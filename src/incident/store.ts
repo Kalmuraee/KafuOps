@@ -35,6 +35,24 @@ export class IncidentStore {
     return out.sort((a, b) => b.first_seen.localeCompare(a.first_seen));
   }
 
+  /**
+   * Find prior incidents similar to the given one — same fingerprint (a
+   * recurrence) or same top stack frame / exception type (a likely relative).
+   * Excludes the incident itself. Most-recent first, capped at `limit`. Used to
+   * give the model awareness of recurring failures and past fixes.
+   */
+  findRelated(incident: Incident, limit = 5): Incident[] {
+    return this.list()
+      .filter((i) => i.id !== incident.id)
+      .filter(
+        (i) =>
+          i.fingerprint === incident.fingerprint ||
+          (!!incident.top_frame_file && i.top_frame_file === incident.top_frame_file) ||
+          (!!incident.exception_type && i.exception_type === incident.exception_type),
+      )
+      .slice(0, limit);
+  }
+
   /** Find an open incident matching a fingerprint inside a time window. */
   findOpenByFingerprint(fingerprint: string, windowSeconds: number): Incident | null {
     const cutoff = Date.now() - windowSeconds * 1000;

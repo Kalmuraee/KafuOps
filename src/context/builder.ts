@@ -177,11 +177,26 @@ export function buildContext(
     }
   }
 
+  // Similar/recurring prior incidents — give the model awareness of repeats and
+  // past fixes. Surfaced both structurally (related_incidents) and as a trusted
+  // memory snippet the prompt renders.
+  const related = new IncidentStore(rootDir).findRelated(input.incident, 5);
+  if (related.length) {
+    memory.push({
+      path: '.kafuops/memory/related-incidents',
+      reason: 'similar or recurring prior incidents',
+      content: related
+        .map((r) => `- ${r.id} [${r.status}] ${r.summary} (fingerprint=${r.fingerprint})`)
+        .join('\n'),
+    });
+  }
+
   const evidence: EvidencePacket = {
     incident_id: input.incident.id,
     stacktrace: input.incident.events.find((e) => e.stacktrace)?.stacktrace,
     logs,
     deployment: input.incident.deployment,
+    related_incidents: related.length ? related.map((r) => r.id) : undefined,
   };
 
   const stats = Redactor.mergeStats(allStats);
