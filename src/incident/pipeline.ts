@@ -20,6 +20,8 @@ export interface PipelineOptions {
   /** 'manual' = human CLI; 'auto' = background worker. Passed to the orchestrator
    *  so llm.trigger_mode=manual_only can block automatic model calls. */
   invocation?: 'manual' | 'auto';
+  /** Inject a pre-built orchestrator (used by tests to mock the provider). */
+  orchestrator?: LLMOrchestrator;
 }
 
 export type PipelineStatus =
@@ -56,7 +58,8 @@ export async function processIncidentToMr(
   if (!inc) return { incidentId: id, status: 'not_found' };
 
   const built = buildContext(rootDir, config, { incident: inc });
-  const orch = new LLMOrchestrator({ rootDir, config, invocation: options.invocation ?? 'manual' });
+  const orch =
+    options.orchestrator ?? new LLMOrchestrator({ rootDir, config, invocation: options.invocation ?? 'manual' });
   const rc = await orch.rootCause(inc, built.bundle);
   store.writeArtifact(inc.id, 'root-cause.json', JSON.stringify(rc, null, 2));
   if (!rc.should_attempt_fix) {
