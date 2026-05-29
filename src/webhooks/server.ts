@@ -130,6 +130,16 @@ export function buildWebhookApp(rootDir: string, config: KafuOpsConfig): express
     if (!config.observability.opentelemetry.enabled) {
       return res.status(404).json({ ok: false, error: 'opentelemetry receiver disabled' });
     }
+    // We parse the OTLP/HTTP JSON encoding only. A protobuf body would arrive
+    // unparsed (express.json ignores it) and silently yield zero spans, so fail
+    // loudly with a clear hint instead.
+    const ctype = (req.header('content-type') ?? '').toLowerCase();
+    if (!ctype.includes('application/json')) {
+      return res.status(415).json({
+        ok: false,
+        error: 'OTLP receiver accepts JSON only — configure your collector exporter to use JSON encoding (not protobuf).',
+      });
+    }
     if (secret && !verifyBearer(req, secret)) {
       return res.status(401).json({ ok: false, error: 'invalid or missing bearer token' });
     }

@@ -25,6 +25,12 @@ export async function runWorkerOnce(opts: WorkerRunOptions): Promise<PipelineRes
   const pending = selectPendingIncidents(store.list());
   const results: PipelineResult[] = [];
   for (const inc of pending) {
+    // Claim the incident so a second worker (or a concurrent `open-mr`) doesn't
+    // process it at the same time. Skip if already claimed.
+    if (!store.tryClaim(inc.id)) {
+      log.debug(`worker: ${inc.id} already claimed; skipping`);
+      continue;
+    }
     try {
       const r = await processIncidentToMr(opts.rootDir, opts.config, inc.id, {
         invocation: 'auto',
@@ -35,6 +41,8 @@ export async function runWorkerOnce(opts: WorkerRunOptions): Promise<PipelineRes
       log.info(`worker: ${r.incidentId} → ${r.status}${r.reason ? ` (${r.reason})` : ''}`);
     } catch (err) {
       log.error(`worker: ${inc.id} failed: ${(err as Error).message}`);
+    } finally {
+      store.releaseClaim(inc.id);
     }
   }
   return results;

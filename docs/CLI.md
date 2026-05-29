@@ -61,10 +61,15 @@ Starts sidecar/agent mode.
 ## Start worker
 
 ```bash
-kafuops worker start --config .kafuops.yml
+kafuops worker start             # poll every 30s
+kafuops worker start --interval 60
+kafuops worker start --once      # process pending incidents once, then exit
 ```
 
-Starts the analysis and patch generation worker.
+The worker drives every pending incident (`created`/`context_built`/`analyzed`)
+through analyse → patch → validate → MR automatically, respecting policy,
+confidence, and `llm.trigger_mode` (it runs with `invocation=auto`, so
+`manual_only` keeps it in dry-run).
 
 ## Incidents
 
@@ -75,7 +80,12 @@ kafuops incidents analyze inc_123
 kafuops incidents build-context inc_123
 kafuops incidents open-mr inc_123
 kafuops incidents mark-resolved inc_123
+kafuops incidents mark-merged inc_123 --note "approved by on-call"
+kafuops incidents mark-rejected inc_123 --note "masked the real bug"
 ```
+
+`mark-merged` / `mark-rejected` record the reviewer's decision in
+`.kafuops/memory/review-feedback.md`, which is fed back into future analyses.
 
 ## Simulate errors
 
@@ -98,6 +108,7 @@ kafuops memory diff
 ```bash
 kafuops policies validate
 kafuops policies explain --file src/auth/session.ts
+kafuops policies explain --incident inc_123   # decisions for the files the incident's patch changed
 ```
 
 ## Audit

@@ -246,6 +246,25 @@ describe('OpenTelemetry OTLP receiver', () => {
     }
   });
 
+  it('rejects a non-JSON (protobuf) OTLP body with 415', async () => {
+    const cfg = ConfigSchema.parse({
+      project: { name: 't' },
+      observability: { opentelemetry: { enabled: true } },
+    });
+    const app = buildWebhookApp(dir, cfg);
+    const { url, close } = await listen(app);
+    try {
+      const res = await fetch(`${url}/v1/otel/traces`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-protobuf' },
+        body: Buffer.from([0x0a, 0x00]),
+      });
+      expect(res.status).toBe(415);
+    } finally {
+      await close();
+    }
+  });
+
   it('creates an incident from an OTLP error span when enabled', async () => {
     const cfg = ConfigSchema.parse({
       project: { name: 't' },
