@@ -1,5 +1,12 @@
 # Roadmap
 
+> Status note (0.2.0): Phases 0–3 are implemented. Phase 4 is partially done —
+> review-feedback ingestion and memory updates after merge/reject are in;
+> similar-incident matching, deploy-diff awareness, and recurrence detection are
+> not yet. Phases 5–6 are partially started (multi-language route discovery for
+> Go/Java/Rust landed in phase 5) but otherwise open. See STATUS.md for the
+> doc-by-doc mapping.
+
 ## Phase 0: Blueprint
 
 - Project docs.

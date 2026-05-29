@@ -53,6 +53,12 @@ export interface OrchestratorOptions {
   config: KafuOpsConfig;
   /** When true, never makes a real API call. Used by tests and dry runs. */
   dryRun?: boolean;
+  /**
+   * How this orchestrator was invoked. `manual` = a human ran a CLI command
+   * (`incidents analyze/open-mr`); `auto` = the background worker drove it.
+   * Used to enforce `llm.trigger_mode`: `manual_only` blocks `auto` calls.
+   */
+  invocation?: 'manual' | 'auto';
   /** Optional pre-constructed OpenAI client (useful for tests). */
   client?: OpenAI;
   anthropicClient?: Anthropic;
@@ -68,8 +74,18 @@ export class LLMOrchestrator {
   constructor(private readonly opts: OrchestratorOptions) {
     this.audit = new AuditLogger(opts.rootDir);
     const requested = opts.config.llm.provider;
-    // Decide which provider is actually usable. Honors trigger_mode: 'off' too.
-    const forceDryRun = !!opts.dryRun || requested === 'none' || opts.config.llm.trigger_mode === 'off';
+    const invocation = opts.invocation ?? 'manual';
+    const triggerMode = opts.config.llm.trigger_mode;
+    // Decide which provider is actually usable. Honors trigger_mode:
+    //   - 'off'         → always dry-run (no model calls at all)
+    //   - 'manual_only' → automatic (worker-driven) calls are dry-run; only a
+    //                     human-invoked command may reach the model
+    //   - 'incident_only' → normal incident-driven calls are allowed
+    const forceDryRun =
+      !!opts.dryRun ||
+      requested === 'none' ||
+      triggerMode === 'off' ||
+      (triggerMode === 'manual_only' && invocation === 'auto');
     if (forceDryRun) {
       this.activeProvider = 'dry-run';
       this.openaiClient = null;
@@ -208,6 +224,19 @@ Return JSON: { "text": "..." }`;
     incidentId: string;
     schema: z.ZodType<T>;
   }): Promise<T> {
+    // Privacy gate: never send un-redacted context to a real model when the
+    // require_redaction policy is on. This is the enforcement point for
+    // `policies.model_calls.require_redaction` — the dry-run path never reaches
+    // here, so we only guard live calls.
+    if (
+      this.opts.config.policies.model_calls.require_redaction &&
+      !args.bundle.privacy.redaction_applied
+    ) {
+      throw new Error(
+        `require_redaction policy: refusing to send un-redacted context to the model for ${args.purpose}. ` +
+          `Enable privacy.redact_before_llm and redaction.enabled, or set policies.model_calls.require_redaction=false.`,
+      );
+    }
     const tokenEstimate = Math.ceil((args.user.length + SYSTEM_BASE.length) / 4);
     log.debug(
       `LLM call provider=${this.activeProvider} purpose=${args.purpose} model=${args.model} ~${tokenEstimate} tokens`,
@@ -233,14 +262,16 @@ Return JSON: { "text": "..." }`;
         `LLM response did not match schema for ${args.purpose}: ${result.error.issues.map((i) => i.message).join(', ')}`,
       );
     }
-    this.audit.record({
-      incident_id: args.incidentId,
-      purpose: args.purpose,
-      model: args.model,
-      bundle: args.bundle,
-      prompt_token_estimate: tokenEstimate,
-      response_summary: JSON.stringify(result.data).slice(0, 500),
-    });
+    if (this.opts.config.privacy.audit_model_context) {
+      this.audit.record({
+        incident_id: args.incidentId,
+        purpose: args.purpose,
+        model: args.model,
+        bundle: args.bundle,
+        prompt_token_estimate: tokenEstimate,
+        response_summary: JSON.stringify(result.data).slice(0, 500),
+      });
+    }
     return result.data;
   }
 
@@ -258,7 +289,9 @@ Return JSON: { "text": "..." }`;
     const completion = await this.openaiClient.chat.completions.create({
       model: args.model,
       messages,
-      response_format: { type: 'json_object' },
+      // Use OpenAI's JSON mode only when structured_outputs is enabled; otherwise
+      // rely on the prompt (some models / gateways don't support response_format).
+      response_format: this.opts.config.llm.structured_outputs ? { type: 'json_object' } : undefined,
       temperature: 0.1,
     });
     return completion.choices[0]?.message?.content ?? '{}';

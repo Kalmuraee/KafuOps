@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Incident } from '../types/index.js';
+import { Incident, LogExcerpt } from '../types/index.js';
 import { getPaths } from '../util/paths.js';
 
 export class IncidentStore {
@@ -57,5 +57,39 @@ export class IncidentStore {
     const target = path.join(d, filename);
     fs.writeFileSync(target, content);
     return target;
+  }
+
+  /**
+   * Persist the rolling-log excerpt captured around an incident. This is how
+   * the ring buffer (which is in-memory and dies with the wrapper/agent
+   * process) reaches the context builder later, even across process restarts.
+   */
+  saveLogs(incidentId: string, logs: LogExcerpt[]): string {
+    return this.writeArtifact(incidentId, 'runtime-logs.json', JSON.stringify(logs, null, 2));
+  }
+
+  loadLogs(incidentId: string): LogExcerpt[] | null {
+    const file = path.join(this.dir(incidentId), 'runtime-logs.json');
+    if (!fs.existsSync(file)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8')) as LogExcerpt[];
+    } catch {
+      return null;
+    }
+  }
+
+  /** Persist the files a patch actually changed (used by `policies explain --incident`). */
+  saveChangedFiles(incidentId: string, files: string[]): string {
+    return this.writeArtifact(incidentId, 'changed-files.json', JSON.stringify(files, null, 2));
+  }
+
+  loadChangedFiles(incidentId: string): string[] | null {
+    const file = path.join(this.dir(incidentId), 'changed-files.json');
+    if (!fs.existsSync(file)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8')) as string[];
+    } catch {
+      return null;
+    }
   }
 }

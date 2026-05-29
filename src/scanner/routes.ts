@@ -24,6 +24,19 @@ const NEST_DECORATOR = /@(Get|Post|Put|Patch|Delete|Options|Head|All)\(\s*(?:['"
 const PY_FASTAPI = /@\w[\w.]*\.(get|post|put|patch|delete|options|head)\(\s*['"]([^'"]+)['"]/g;
 const PY_FLASK = /@\w[\w.]*\.route\(\s*['"]([^'"]+)['"](?:.*?methods\s*=\s*\[([^\]]*)\])?/g;
 
+// Go: gin/echo/chi method calls (r.GET / r.Get / e.POST …). Case-insensitive.
+const GO_METHOD = /\b\w+\.(get|post|put|patch|delete|head|options)\(\s*"([^"]+)"/gi;
+// Go net/http (and Go 1.22 mux) HandleFunc; pattern may embed a method: "GET /path".
+const GO_HANDLEFUNC = /\b\w+\.HandleFunc\(\s*"(?:([A-Z]+)\s+)?([^"]+)"/g;
+
+// Java Spring: @GetMapping("/x"), @PostMapping(value="/x"), @RequestMapping("/x").
+const JAVA_MAPPING = /@(Get|Post|Put|Patch|Delete)Mapping\(\s*(?:value\s*=\s*)?["']([^"']+)["']/g;
+const JAVA_REQUESTMAPPING = /@RequestMapping\(\s*(?:value\s*=\s*)?["']([^"']+)["']/g;
+
+// Rust: actix/rocket attribute macros (#[get("/x")]) and axum .route("/x", get(h)).
+const RUST_ATTR = /#\[(get|post|put|patch|delete|head|options)\(\s*"([^"]+)"/gi;
+const RUST_AXUM = /\.route\(\s*"([^"]+)"\s*,\s*(get|post|put|patch|delete)\(/gi;
+
 export function discoverRoutes(rootDir: string, entries: FileEntry[]): RouteInfo[] {
   const out: RouteInfo[] = [];
   const tsJs = filterFiles(entries, ['.ts', '.tsx', '.js', '.mjs', '.cjs']);
@@ -76,6 +89,43 @@ export function discoverRoutes(rootDir: string, entries: FileEntry[]): RouteInfo
       }
     }
   }
+  // Go
+  for (const f of filterFiles(entries, ['.go'])) {
+    if (f.path.toLowerCase().endsWith('_test.go')) continue;
+    const src = readSafe(path.join(rootDir, f.path));
+    if (!src) continue;
+    for (const m of src.matchAll(GO_METHOD)) {
+      out.push({ method: m[1].toUpperCase(), path_pattern: m[2], handler: f.path, file: f.path });
+    }
+    for (const m of src.matchAll(GO_HANDLEFUNC)) {
+      out.push({ method: (m[1] ?? 'ANY').toUpperCase(), path_pattern: m[2], handler: f.path, file: f.path });
+    }
+  }
+
+  // Java (Spring)
+  for (const f of filterFiles(entries, ['.java'])) {
+    const src = readSafe(path.join(rootDir, f.path));
+    if (!src) continue;
+    for (const m of src.matchAll(JAVA_MAPPING)) {
+      out.push({ method: m[1].toUpperCase(), path_pattern: m[2], handler: f.path, file: f.path });
+    }
+    for (const m of src.matchAll(JAVA_REQUESTMAPPING)) {
+      out.push({ method: 'ANY', path_pattern: m[1], handler: f.path, file: f.path });
+    }
+  }
+
+  // Rust (actix/rocket/axum)
+  for (const f of filterFiles(entries, ['.rs'])) {
+    const src = readSafe(path.join(rootDir, f.path));
+    if (!src) continue;
+    for (const m of src.matchAll(RUST_ATTR)) {
+      out.push({ method: m[1].toUpperCase(), path_pattern: m[2], handler: f.path, file: f.path });
+    }
+    for (const m of src.matchAll(RUST_AXUM)) {
+      out.push({ method: m[2].toUpperCase(), path_pattern: m[1], handler: f.path, file: f.path });
+    }
+  }
+
   // Dedup
   const seen = new Set<string>();
   return out.filter((r) => {

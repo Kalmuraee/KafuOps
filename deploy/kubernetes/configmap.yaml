@@ -1,0 +1,45 @@
+# The .kafuops.yml KafuOps reads at runtime (mounted at /workspace/.kafuops.yml).
+# Edit repo.url, triggers, and policies for your service before applying.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafuops-config
+  namespace: kafuops
+data:
+  .kafuops.yml: |
+    version: 1
+    project:
+      name: my-backend
+      language: typescript
+      framework: express
+    repo:
+      provider: github            # github | gitlab | none
+      url: https://github.com/your-org/your-backend.git
+      default_branch: main
+      mr:
+        enabled: true
+        auto_create: true         # open the MR automatically when gates pass
+        auto_merge: false         # never merge without a human by default
+    runtime:
+      mode: kubernetes
+      # Tail a shared log file written by your app (see agent-deployment notes),
+      # or rely on webhook/OTel intake only by leaving this empty.
+      log_sources:
+        - type: file
+          path: /var/log/app/app.log
+    observability:
+      opentelemetry:
+        enabled: true             # exposes POST /v1/otel/traces
+      logs:
+        enabled: true
+    llm:
+      provider: anthropic         # openai | anthropic | none
+      trigger_mode: incident_only # off | manual_only | incident_only
+    sandbox:
+      type: local
+      install_command: npm ci
+      test_command: npm test
+    server:
+      host: 0.0.0.0
+      port: 7878
+      webhook_secret_env: KAFUOPS_WEBHOOK_SECRET

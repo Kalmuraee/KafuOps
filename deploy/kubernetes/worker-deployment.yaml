@@ -1,0 +1,85 @@
+# KafuOps worker: drives pending incidents through analyse → patch → validate →
+# MR. It needs the repository source on disk, so an initContainer clones it into a
+# shared volume. The worker and agent share incident state via a PVC so the worker
+# sees incidents the agent ingested.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafuops-state
+  namespace: kafuops
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafuops-worker
+  namespace: kafuops
+  labels:
+    app.kubernetes.io/name: kafuops
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafuops
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafuops
+        app.kubernetes.io/component: worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      initContainers:
+        # Clone the repo into the shared workspace so the worker can build context
+        # and run the sandbox. Re-clones on each (re)start for a clean tree.
+        - name: clone
+          image: alpine/git:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              rm -rf /workspace/repo
+              git clone --depth 50 \
+                "https://x-access-token:${KAFUOPS_GIT_TOKEN}@github.com/your-org/your-backend.git" \
+                /workspace/repo
+              cp /config/.kafuops.yml /workspace/repo/.kafuops.yml
+          envFrom:
+            - secretRef:
+                name: kafuops-secrets
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: config
+              mountPath: /config
+      containers:
+        - name: worker
+          image: ghcr.io/kalmuraee/kafuops:latest
+          imagePullPolicy: IfNotPresent
+          args: ["worker", "start", "--interval", "30"]
+          workingDir: /workspace/repo
+          envFrom:
+            - secretRef:
+                name: kafuops-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: kafuops-state
+        - name: config
+          configMap:
+            name: kafuops-config

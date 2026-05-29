@@ -39,7 +39,7 @@ export function buildGraphFromEntries(rootDir: string, entries: FileEntry[]): Ar
   const edges: GraphEdge[] = [];
 
   // File nodes
-  const codeFiles = filterFiles(entries, ['.ts', '.tsx', '.js', '.mjs', '.cjs', '.py', '.go', '.java']);
+  const codeFiles = filterFiles(entries, ['.ts', '.tsx', '.js', '.mjs', '.cjs', '.py', '.go', '.java', '.rs']);
   for (const f of codeFiles) {
     const id = `file:${f.path}`;
     nodes.set(id, { id, type: 'file', label: f.path });
@@ -64,6 +64,11 @@ export function buildGraphFromEntries(rootDir: string, entries: FileEntry[]): Ar
     const src = readSafe(fullPath);
     if (!src) continue;
     const fromId = `file:${f.path}`;
+    const addPkg = (pkg: string): void => {
+      const pkgId = `package:${pkg}`;
+      if (!nodes.has(pkgId)) nodes.set(pkgId, { id: pkgId, type: 'package', label: pkg });
+      edges.push({ from: fromId, to: pkgId, type: 'depends_on' });
+    };
     if (f.path.endsWith('.py')) {
       for (const m of src.matchAll(PY_IMPORT)) {
         const mod = (m[1] || m[2] || '').trim();
@@ -74,11 +79,28 @@ export function buildGraphFromEntries(rootDir: string, entries: FileEntry[]): Ar
         if (target) {
           edges.push({ from: fromId, to: `file:${target.path}`, type: 'imports' });
         } else {
-          // External package node
-          const pkgId = `package:${mod.split('.')[0]}`;
-          if (!nodes.has(pkgId)) nodes.set(pkgId, { id: pkgId, type: 'package', label: mod.split('.')[0] });
-          edges.push({ from: fromId, to: pkgId, type: 'depends_on' });
+          addPkg(mod.split('.')[0]);
         }
+      }
+      continue;
+    }
+    if (f.path.endsWith('.go')) {
+      // Block imports: import ( "a"  alias "b" ) — and single: import "a".
+      for (const block of src.matchAll(/import\s*\(([\s\S]*?)\)/g)) {
+        for (const lit of block[1].matchAll(/"([^"]+)"/g)) addPkg(lit[1]);
+      }
+      for (const single of src.matchAll(/import\s+"([^"]+)"/g)) addPkg(single[1]);
+      continue;
+    }
+    if (f.path.endsWith('.java')) {
+      for (const m of src.matchAll(/import\s+(?:static\s+)?([\w.]+)\s*;/g)) addPkg(m[1]);
+      continue;
+    }
+    if (f.path.endsWith('.rs')) {
+      for (const m of src.matchAll(/use\s+([\w:]+)/g)) {
+        const crate = m[1].split('::')[0];
+        if (['crate', 'self', 'super'].includes(crate)) continue;
+        addPkg(crate);
       }
       continue;
     }
@@ -176,10 +198,54 @@ function renderMarkdown(graph: ArchitectureGraph): string {
   lines.push(`Generated: ${graph.generated_at}`, '');
   const routes = graph.nodes.filter((n) => n.type === 'route');
   const files = graph.nodes.filter((n) => n.type === 'file');
+  const tests = graph.nodes.filter((n) => n.type === 'test');
   const packages = graph.nodes.filter((n) => n.type === 'package');
-  lines.push(`Nodes: ${graph.nodes.length} (files=${files.length}, routes=${routes.length}, packages=${packages.length})`);
-  lines.push(`Edges: ${graph.edges.length}`, '');
-  lines.push(`## Routes`, '');
-  for (const r of routes) lines.push(`- ${r.label}`);
+  lines.push(
+    `Nodes: ${graph.nodes.length} (files=${files.length}, routes=${routes.length}, tests=${tests.length}, packages=${packages.length})`,
+  );
+  const edgeCounts: Record<string, number> = {};
+  for (const e of graph.edges) edgeCounts[e.type] = (edgeCounts[e.type] ?? 0) + 1;
+  lines.push(
+    `Edges: ${graph.edges.length} (${Object.entries(edgeCounts)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ') || 'none'})`,
+    '',
+  );
+
+  // Routes → handler file, so the doc shows where each endpoint lives.
+  const handledBy = new Map<string, string>();
+  for (const e of graph.edges) {
+    if (e.type === 'handled_by') handledBy.set(e.from, e.to.replace(/^file:/, ''));
+  }
+  lines.push(`## Routes (${routes.length})`, '');
+  for (const r of routes) {
+    const file = handledBy.get(r.id);
+    lines.push(`- ${r.label}${file ? ` → \`${file}\`` : ''}`);
+  }
+  lines.push('');
+
+  // External packages each source file depends on (formerly missing — Go/Java/Rust
+  // files used to be orphaned nodes with no dependency edges).
+  const pkgUsage = new Map<string, number>();
+  for (const e of graph.edges) {
+    if (e.type === 'depends_on') {
+      const pkg = e.to.replace(/^package:/, '');
+      pkgUsage.set(pkg, (pkgUsage.get(pkg) ?? 0) + 1);
+    }
+  }
+  lines.push(`## External packages (${pkgUsage.size})`, '');
+  for (const [pkg, count] of [...pkgUsage.entries()].sort((a, b) => b[1] - a[1])) {
+    lines.push(`- \`${pkg}\` (used by ${count} file${count === 1 ? '' : 's'})`);
+  }
+  lines.push('');
+
+  // Test coverage: which source files have a test edge pointing at them.
+  const tested = new Set<string>();
+  for (const e of graph.edges) if (e.type === 'tests') tested.add(e.to.replace(/^file:/, ''));
+  if (tested.size) {
+    lines.push(`## Tested source files (${tested.size})`, '');
+    for (const f of [...tested].sort()) lines.push(`- \`${f}\``);
+    lines.push('');
+  }
   return lines.join('\n');
 }

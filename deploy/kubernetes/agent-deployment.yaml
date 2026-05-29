@@ -1,0 +1,88 @@
+# KafuOps agent: webhook + OpenTelemetry intake. Stateless; scale to 1 (incident
+# dedup state is per-process for the MVP). Point Sentry/Datadog/Alertmanager and
+# your OTel collector at the Service.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafuops-agent
+  namespace: kafuops
+  labels:
+    app.kubernetes.io/name: kafuops
+    app.kubernetes.io/component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafuops
+      app.kubernetes.io/component: agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafuops
+        app.kubernetes.io/component: agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: agent
+          image: ghcr.io/kalmuraee/kafuops:latest
+          imagePullPolicy: IfNotPresent
+          args: ["agent", "start"]
+          workingDir: /workspace
+          env:
+            - name: KAFUOPS_CONFIG
+              value: /workspace/.kafuops.yml
+          envFrom:
+            - secretRef:
+                name: kafuops-secrets
+          ports:
+            - name: http
+              containerPort: 7878
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /workspace/.kafuops.yml
+              subPath: .kafuops.yml
+            - name: state
+              mountPath: /workspace/.kafuops
+      volumes:
+        - name: config
+          configMap:
+            name: kafuops-config
+        - name: state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafuops-agent
+  namespace: kafuops
+  labels:
+    app.kubernetes.io/name: kafuops
+    app.kubernetes.io/component: agent
+spec:
+  selector:
+    app.kubernetes.io/name: kafuops
+    app.kubernetes.io/component: agent
+  ports:
+    - name: http
+      port: 7878
+      targetPort: http

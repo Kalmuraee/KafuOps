@@ -34,9 +34,14 @@ export class IncidentEngine {
   /**
    * Ingest a runtime event. Returns the (created or updated) incident if a trigger fires,
    * or null when the event is filtered out / does not yet meet thresholds.
+   *
+   * `opts.force` creates an incident unconditionally (used by the manual
+   * `/v1/incidents` endpoint and `simulate`): noise filters, trigger rules, and
+   * the per-service rate limit are bypassed, but fingerprint dedup still applies.
    */
-  ingest(event: RuntimeEvent): Incident | null {
-    if (this.isNoise(event)) {
+  ingest(event: RuntimeEvent, opts: { force?: boolean } = {}): Incident | null {
+    const force = !!opts.force;
+    if (!force && this.isNoise(event)) {
       log.debug(`event filtered as noise: ${event.message.slice(0, 80)}`);
       return null;
     }
@@ -52,10 +57,12 @@ export class IncidentEngine {
     });
     this.pruneRecent();
 
-    const triggerReason = this.evaluateTriggers(event, fp);
+    const triggerReason = force
+      ? ((event.attributes?.trigger_reason as string | undefined) ?? 'manual')
+      : this.evaluateTriggers(event, fp);
     if (!triggerReason) return null;
 
-    if (this.rateLimited(event.service)) {
+    if (!force && this.rateLimited(event.service)) {
       log.warn(`incident rate limit hit for service=${event.service}`);
       return null;
     }

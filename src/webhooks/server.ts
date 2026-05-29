@@ -54,6 +54,7 @@ export function buildWebhookApp(rootDir: string, config: KafuOpsConfig): express
   app.post('/v1/incidents', (req, res) => {
     try {
       const body = req.body ?? {};
+      // Redact before the event is stored — manual reports can carry secrets too.
       const event: RuntimeEvent = {
         id: `evt_${nanoid(10)}`,
         service: body.service ?? config.project.service_name ?? config.project.name,
@@ -61,11 +62,13 @@ export function buildWebhookApp(rootDir: string, config: KafuOpsConfig): express
         type: 'manual',
         severity: body.severity ?? 'high',
         timestamp: new Date().toISOString(),
-        message: body.summary ?? 'Manual incident',
-        stacktrace: body.evidence?.stacktrace,
-        attributes: { manual: true },
+        message: redactor.redactText(String(body.summary ?? 'Manual incident')).text,
+        stacktrace: body.evidence?.stacktrace
+          ? redactor.redactText(String(body.evidence.stacktrace)).text
+          : undefined,
+        attributes: { manual: true, ...(redactor.redactJson(body.attributes ?? {}).value as Record<string, unknown>) },
       };
-      const inc = engine.ingest(event);
+      const inc = engine.ingest(event, { force: true });
       res.json({ ok: true, incident: inc });
     } catch (err) {
       res.status(400).json({ ok: false, error: (err as Error).message });
@@ -99,6 +102,12 @@ export function buildWebhookApp(rootDir: string, config: KafuOpsConfig): express
   });
 
   app.post('/v1/webhooks/alertmanager', (req, res) => {
+    // Alertmanager supports bearer auth via http_config.authorization. We require
+    // it and fail closed (parity with the HMAC-gated Sentry/Datadog endpoints):
+    // an unauthenticated incident-injection endpoint is a real risk.
+    if (!verifyBearer(req, secret)) {
+      return res.status(401).json({ ok: false, error: 'invalid or missing bearer token' });
+    }
     try {
       const body = req.body ?? {};
       const alerts: any[] = Array.isArray(body.alerts) ? body.alerts : [body];
@@ -109,6 +118,29 @@ export function buildWebhookApp(rootDir: string, config: KafuOpsConfig): express
         if (inc) created.push(inc.id);
       }
       res.json({ ok: true, incidents: created });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  app.post('/v1/otel/traces', (req, res) => {
+    // OpenTelemetry OTLP/HTTP JSON trace receiver. Disabled by default; opt in via
+    // observability.opentelemetry.enabled. Auth is optional (a collector is
+    // typically a trusted in-cluster sender) — but enforced when a secret is set.
+    if (!config.observability.opentelemetry.enabled) {
+      return res.status(404).json({ ok: false, error: 'opentelemetry receiver disabled' });
+    }
+    if (secret && !verifyBearer(req, secret)) {
+      return res.status(401).json({ ok: false, error: 'invalid or missing bearer token' });
+    }
+    try {
+      const events = otelToEvents(req.body, config, redactor);
+      const created: string[] = [];
+      for (const ev of events) {
+        const inc = engine.ingest(ev);
+        if (inc) created.push(inc.id);
+      }
+      res.json({ ok: true, incidents: created, spans_ingested: events.length });
     } catch (err) {
       res.status(400).json({ ok: false, error: (err as Error).message });
     }
@@ -248,9 +280,112 @@ export function verifySignature(
   return safeEqual(provided, hmacHex) || safeEqual(provided, hmacB64);
 }
 
+/**
+ * Verify an `Authorization: Bearer <secret>` header (timing-safe). Fails closed
+ * when the secret is empty so unconfigured deployments cannot accept unsigned
+ * events. Used by the Alertmanager and (optionally) OpenTelemetry endpoints,
+ * which authenticate with bearer tokens rather than HMAC signatures.
+ */
+export function verifyBearer(req: express.Request, secret: string): boolean {
+  if (!secret) return false;
+  const provided = (req.header('authorization') ?? '').trim().replace(/^Bearer\s+/i, '');
+  if (!provided) return false;
+  return safeEqual(provided, secret);
+}
+
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;
   return crypto.timingSafeEqual(ab, bb);
+}
+
+/** Read an OTLP attribute value (stringValue/intValue/boolValue/doubleValue). */
+function otlpAttrValue(v: any): string | undefined {
+  if (v == null || typeof v !== 'object') return undefined;
+  if (typeof v.stringValue === 'string') return v.stringValue;
+  if (v.intValue != null) return String(v.intValue);
+  if (v.boolValue != null) return String(v.boolValue);
+  if (v.doubleValue != null) return String(v.doubleValue);
+  return undefined;
+}
+
+/** Flatten an OTLP `attributes` array into a key→string map. */
+function otlpAttrs(attrs: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!Array.isArray(attrs)) return out;
+  for (const a of attrs) {
+    if (a && typeof a.key === 'string') {
+      const val = otlpAttrValue(a.value);
+      if (val !== undefined) out[a.key] = val;
+    }
+  }
+  return out;
+}
+
+/**
+ * Normalize an OTLP/HTTP JSON trace export into RuntimeEvents. We emit one event
+ * per span that is either status.code === 2 (ERROR) or carries an `exception`
+ * span event, extracting exception type/message/stacktrace.
+ */
+export function otelToEvents(body: any, config: KafuOpsConfig, redactor: Redactor): RuntimeEvent[] {
+  const out: RuntimeEvent[] = [];
+  const resourceSpans: any[] = Array.isArray(body?.resourceSpans) ? body.resourceSpans : [];
+  for (const rs of resourceSpans) {
+    const resAttrs = otlpAttrs(rs?.resource?.attributes);
+    const service =
+      resAttrs['service.name'] ?? config.project.service_name ?? config.project.name;
+    const environment = resAttrs['deployment.environment'] ?? 'production';
+    const scopeSpans: any[] = Array.isArray(rs?.scopeSpans)
+      ? rs.scopeSpans
+      : Array.isArray(rs?.instrumentationLibrarySpans)
+      ? rs.instrumentationLibrarySpans
+      : [];
+    for (const ss of scopeSpans) {
+      const spans: any[] = Array.isArray(ss?.spans) ? ss.spans : [];
+      for (const span of spans) {
+        const statusCode = span?.status?.code;
+        const events: any[] = Array.isArray(span?.events) ? span.events : [];
+        const exceptionEvent = events.find((e) => e?.name === 'exception');
+        if (statusCode !== 2 && !exceptionEvent) continue;
+        const spanAttrs = otlpAttrs(span?.attributes);
+        const excAttrs = otlpAttrs(exceptionEvent?.attributes);
+        const exceptionType = excAttrs['exception.type'];
+        const exceptionMsg = excAttrs['exception.message'];
+        const stack = excAttrs['exception.stacktrace'];
+        const route = spanAttrs['http.route'] ?? spanAttrs['http.target'] ?? span?.name;
+        const message =
+          exceptionMsg ?? span?.status?.message ?? `Span errored: ${span?.name ?? 'unknown'}`;
+        out.push({
+          id: `evt_${nanoid(10)}`,
+          service,
+          environment,
+          type: 'uncaught_exception',
+          severity: 'error',
+          timestamp: new Date().toISOString(),
+          message: redactor.redactText(String(message)).text,
+          stacktrace: stack ? redactor.redactText(String(stack)).text : undefined,
+          trace_id: span?.traceId,
+          span_id: span?.spanId,
+          route,
+          attributes: {
+            source: 'opentelemetry',
+            exception_type: exceptionType,
+            top_frame_file: stack ? topFrameFile(stack) : undefined,
+            ...(redactor.redactJson(spanAttrs).value as Record<string, unknown>),
+          },
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Best-effort top stack-frame file from a raw stack string (Node or Python). */
+function topFrameFile(stack: string): string | undefined {
+  const node = /at\s+(?:[^()]*\()?([^()\s:]+):\d+:\d+\)?/.exec(stack);
+  if (node) return node[1];
+  const py = /File\s+"([^"]+)",\s+line\s+\d+/.exec(stack);
+  if (py) return py[1];
+  return undefined;
 }

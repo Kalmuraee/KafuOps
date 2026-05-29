@@ -1,0 +1,14 @@
+apiVersion: v2
+name: kafuops
+description: Open-source production-debugging agent — turns incidents into evidence-backed MRs.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://kalmuraee.github.io/KafuOps/
+sources:
+  - https://github.com/Kalmuraee/KafuOps
+keywords:
+  - observability
+  - incident-response
+  - ai-agent
+  - sre

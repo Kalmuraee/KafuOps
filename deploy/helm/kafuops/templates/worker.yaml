@@ -1,0 +1,84 @@
+{{- if .Values.worker.enabled }}
+{{- if .Values.worker.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-kafuops-state
+  labels:
+    {{- include "kafuops.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.worker.persistence.size }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-kafuops-worker
+  labels:
+    {{- include "kafuops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafuops
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafuops
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      initContainers:
+        - name: clone
+          image: alpine/git:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              rm -rf /workspace/repo
+              CLONE_URL="{{ .Values.worker.repoCloneUrl }}"
+              AUTH_URL=$(echo "$CLONE_URL" | sed -E "s#https://#https://x-access-token:${KAFUOPS_GIT_TOKEN}@#")
+              git clone --depth 50 "$AUTH_URL" /workspace/repo
+              cp /config/.kafuops.yml /workspace/repo/.kafuops.yml
+          envFrom:
+            - secretRef:
+                name: {{ include "kafuops.secretName" . }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: config
+              mountPath: /config
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["worker", "start", "--interval", "{{ .Values.worker.intervalSeconds }}"]
+          workingDir: /workspace/repo
+          envFrom:
+            - secretRef:
+                name: {{ include "kafuops.secretName" . }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          {{- if .Values.worker.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-kafuops-state
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-kafuops-config
+{{- end }}

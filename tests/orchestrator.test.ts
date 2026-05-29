@@ -94,4 +94,97 @@ describe('LLMOrchestrator provider dispatch', () => {
     expect(rc.classification).toBeTruthy();
     expect(typeof rc.confidence).toBe('number');
   });
+
+  it('trigger_mode=manual_only forces dry-run for automatic invocations', () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    const cfg = ConfigSchema.parse({
+      project: { name: 't' },
+      llm: { provider: 'openai', trigger_mode: 'manual_only' },
+    });
+    const auto = new LLMOrchestrator({ rootDir: freshDir(), config: cfg, invocation: 'auto' });
+    expect(auto.isDryRun()).toBe(true);
+    const manual = new LLMOrchestrator({ rootDir: freshDir(), config: cfg, invocation: 'manual' });
+    expect(manual.isDryRun()).toBe(false);
+    expect(manual.getProvider()).toBe('openai');
+  });
+
+  it('trigger_mode=incident_only allows automatic invocations', () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    const cfg = ConfigSchema.parse({
+      project: { name: 't' },
+      llm: { provider: 'openai', trigger_mode: 'incident_only' },
+    });
+    const auto = new LLMOrchestrator({ rootDir: freshDir(), config: cfg, invocation: 'auto' });
+    expect(auto.isDryRun()).toBe(false);
+    expect(auto.getProvider()).toBe('openai');
+  });
+});
+
+describe('LLMOrchestrator require_redaction policy', () => {
+  beforeEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+  afterEach(() => {
+    if (ORIG_OPENAI) process.env.OPENAI_API_KEY = ORIG_OPENAI; else delete process.env.OPENAI_API_KEY;
+    if (ORIG_ANTHROPIC) process.env.ANTHROPIC_API_KEY = ORIG_ANTHROPIC; else delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it('refuses a live call when require_redaction is set but the bundle was not redacted', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    const cfg = ConfigSchema.parse({
+      project: { name: 't' },
+      llm: { provider: 'openai' },
+      policies: { model_calls: { require_redaction: true } },
+    });
+    let called = false;
+    const fakeClient = {
+      chat: { completions: { create: async () => { called = true; return { choices: [{ message: { content: '{}' } }] }; } } },
+    };
+    const o = new LLMOrchestrator({ rootDir: freshDir(), config: cfg, client: fakeClient as any });
+    const bundle = fakeBundle();
+    bundle.privacy.redaction_applied = false;
+    await expect(o.rootCause(fakeIncident(), bundle)).rejects.toThrow(/require_redaction/i);
+    expect(called).toBe(false);
+  });
+
+  it('allows a live call when the bundle was redacted', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    const cfg = ConfigSchema.parse({
+      project: { name: 't' },
+      llm: { provider: 'openai' },
+      policies: { model_calls: { require_redaction: true } },
+    });
+    let called = false;
+    const fakeClient = {
+      chat: {
+        completions: {
+          create: async () => {
+            called = true;
+            return {
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      classification: 'code_bug',
+                      suspected_root_cause: 'x',
+                      evidence: [],
+                      files_to_read_next: [],
+                      should_attempt_fix: true,
+                      confidence: 0.5,
+                    }),
+                  },
+                },
+              ],
+            };
+          },
+        },
+      },
+    };
+    const o = new LLMOrchestrator({ rootDir: freshDir(), config: cfg, client: fakeClient as any });
+    const bundle = fakeBundle(); // redaction_applied: true
+    const rc = await o.rootCause(fakeIncident(), bundle);
+    expect(called).toBe(true);
+    expect(rc.classification).toBe('code_bug');
+  });
 });

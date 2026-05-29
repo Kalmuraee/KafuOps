@@ -12,6 +12,8 @@ import {
   buildContextCommand,
   openMrCommand,
   markResolved,
+  markMerged,
+  markRejected,
 } from './commands/incidents.js';
 import { simulateCommand } from './commands/simulate.js';
 import { memoryShow, memoryUpdate, memoryValidate, memoryDiff } from './commands/memory.js';
@@ -82,8 +84,10 @@ agent
 const worker = program.command('worker').description('Analysis + patch worker.');
 worker
   .command('start')
-  .description('Start the worker.')
-  .action(workerStart);
+  .description('Start the background worker that drives pending incidents to MRs.')
+  .option('--interval <seconds>', 'poll interval in seconds', (v) => Number(v))
+  .option('--once', 'process pending incidents once, then exit')
+  .action((opts) => workerStart({ intervalSeconds: opts.interval, once: !!opts.once }));
 
 const incidents = program.command('incidents').description('Manage incidents.');
 incidents.command('list').description('List incidents.').action(listIncidents);
@@ -109,6 +113,16 @@ incidents
   .command('mark-resolved <id>')
   .description('Close an incident manually.')
   .action(async (id) => markResolved(id));
+incidents
+  .command('mark-merged <id>')
+  .description('Record that a reviewer merged the MR (feeds review-feedback memory).')
+  .option('--note <text>', 'reviewer note to remember')
+  .action(async (id, opts) => markMerged(id, { note: opts.note }));
+incidents
+  .command('mark-rejected <id>')
+  .description('Record that a reviewer rejected the MR (feeds review-feedback memory).')
+  .option('--note <text>', 'reviewer note to remember')
+  .action(async (id, opts) => markRejected(id, { note: opts.note }));
 
 program
   .command('simulate')
@@ -136,9 +150,10 @@ const policies = program.command('policies').description('Inspect policy decisio
 policies.command('validate').action(policiesValidate);
 policies
   .command('explain')
-  .description('Explain the policy decision for a file path.')
-  .requiredOption('--file <path>', 'repo-relative file path')
-  .action(async (opts) => policiesExplain(opts.file));
+  .description('Explain the policy decision for a file path or an incident’s changed files.')
+  .option('--file <path>', 'repo-relative file path')
+  .option('--incident <id>', 'explain decisions for an incident’s changed files')
+  .action(async (opts) => policiesExplain({ file: opts.file, incident: opts.incident }));
 
 const audit = program.command('audit').description('Inspect model-call audit log.');
 audit.command('list').action(auditList);

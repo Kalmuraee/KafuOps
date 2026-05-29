@@ -23,10 +23,11 @@ export function resolveConfigPath(opts: LoadConfigOptions = {}): {
   rootDir: string;
 } {
   const cwd = opts.cwd ?? process.cwd();
-  if (opts.configPath) {
-    const p = path.isAbsolute(opts.configPath)
-      ? opts.configPath
-      : path.resolve(cwd, opts.configPath);
+  // Explicit path wins; otherwise honor KAFUOPS_CONFIG (used by the Docker/K8s
+  // deployments), then fall back to walking up from cwd.
+  const explicit = opts.configPath ?? process.env.KAFUOPS_CONFIG;
+  if (explicit) {
+    const p = path.isAbsolute(explicit) ? explicit : path.resolve(cwd, explicit);
     return { configPath: p, rootDir: path.dirname(p) };
   }
   let dir = cwd;

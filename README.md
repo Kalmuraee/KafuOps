@@ -28,7 +28,7 @@ KafuOps is designed around one important rule:
 
 ## What KafuOps does
 
-- Observes backend logs, traces, metrics, runtime errors, and alert webhooks.
+- Observes backend logs (wrapper mode + sidecar file tailing), OpenTelemetry traces, runtime errors, and alert webhooks (Sentry/Datadog/Alertmanager).
 - Builds a living `.kafuops/memory/` folder that explains the codebase, architecture, routes, services, database usage, queues, external APIs, and previous incidents.
 - Detects errors and deduplicates noisy events into incidents.
 - Selects the relevant source files, tests, configs, traces, and log snippets.
@@ -143,7 +143,10 @@ scoring, and audit logging of every model call. The implementation runs in
 **dry-run mode** automatically when `OPENAI_API_KEY` or `KAFUOPS_GIT_TOKEN` are
 absent, so the full pipeline can be exercised offline.
 
-The documentation in `docs/` and `website/` remains the canonical product
-specification — anything not implemented yet (Kubernetes operator, embedded
-SDKs, full OpenTelemetry pull, review-feedback memory loop) is on the roadmap
-in [docs/ROADMAP.md](docs/ROADMAP.md).
+As of 0.2.0 the agent observes a live system (sidecar log tailing + OpenTelemetry
+OTLP intake), the `worker` autonomously drives incidents to MRs, and the
+review-feedback memory loop is closed. The documentation in `docs/` and
+`website/` remains the canonical product specification — anything not implemented
+yet (first-class Kubernetes operator/CRD, embedded SDKs, similar-incident
+matching) is on the roadmap in [docs/ROADMAP.md](docs/ROADMAP.md). See
+[STATUS.md](STATUS.md) for the honest doc-by-doc mapping.
