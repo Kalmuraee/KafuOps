@@ -128,22 +128,35 @@ export function buildContext(
     });
   }
 
-  // Log excerpts
+  // Log excerpts. Priority:
+  //   1. An in-memory ring buffer passed by the caller (live wrapper/agent run).
+  //   2. The ring-buffer excerpt persisted on the incident at capture time
+  //      (survives process exit — this is the common path when analysing an
+  //      incident after the fact).
+  //   3. Fall back to the incident's own event messages (weakest signal).
   const logs: LogExcerpt[] = [];
+  const maxLogChars = config.llm.max_log_excerpt_chars;
   if (input.ringBuffer) {
     const firstSeen = new Date(input.incident.first_seen).getTime();
     const before = config.observability.logs.ring_buffer.include_before_error_seconds * 1000;
     const after = config.observability.logs.ring_buffer.include_after_error_seconds * 1000;
-    const entries = input.ringBuffer.excerpt(
-      firstSeen - before,
-      firstSeen + after,
-      config.llm.max_log_excerpt_chars,
-    );
+    const entries = input.ringBuffer.excerpt(firstSeen - before, firstSeen + after, maxLogChars);
     for (const e of entries) logs.push({ timestamp: e.timestamp, message: e.message });
   } else {
-    // Fall back to events themselves
-    for (const ev of input.incident.events.slice(-50)) {
-      logs.push({ timestamp: ev.timestamp, message: ev.message });
+    const persisted = new IncidentStore(rootDir).loadLogs(input.incident.id);
+    if (persisted && persisted.length) {
+      let budget = maxLogChars;
+      for (const e of persisted) {
+        if (budget <= 0) break;
+        const message = e.message.length > budget ? e.message.slice(0, budget) + '…' : e.message;
+        logs.push({ timestamp: e.timestamp, message });
+        budget -= message.length;
+      }
+    } else {
+      // Fall back to events themselves
+      for (const ev of input.incident.events.slice(-50)) {
+        logs.push({ timestamp: ev.timestamp, message: ev.message });
+      }
     }
   }
 

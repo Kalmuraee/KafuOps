@@ -1,6 +1,8 @@
 import { loadConfigOrExit } from '../util.js';
 import { WrapperRuntime } from '../../runtime/wrapper.js';
 import { IncidentEngine } from '../../incident/engine.js';
+import { IncidentStore } from '../../incident/store.js';
+import { persistIncidentLogs } from '../../runtime/capture.js';
 import { log } from '../../util/logger.js';
 import { RuntimeEvent } from '../../types/index.js';
 
@@ -33,10 +35,14 @@ export async function runCommand(passthrough: string[], options: RunOptions): Pr
     config,
   });
   const engine = new IncidentEngine(rootDir, config);
+  const store = new IncidentStore(rootDir);
 
   wrapper.on('event', (ev: RuntimeEvent) => {
     const incident = engine.ingest(ev);
     if (incident) {
+      // Snapshot the rolling log window onto the incident so the context
+      // builder has real logs around the error — not just the event message.
+      persistIncidentLogs(store, incident, wrapper.getBuffer(), config);
       log.warn(
         `Incident ${incident.id} created: ${incident.summary} (event_count=${incident.event_count})`,
       );
