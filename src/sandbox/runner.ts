@@ -1,11 +1,55 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { simpleGit, SimpleGit } from 'simple-git';
 import { KafuOpsConfig } from '../config/schema.js';
 import { CodePatch, Incident, ValidationResult } from '../types/index.js';
 import { run, runShell, tail } from '../util/shell.js';
 import { log } from '../util/logger.js';
 import { ensureDir, getPaths } from '../util/paths.js';
+
+/**
+ * Build the `docker run` argv to execute a shell command inside a container with
+ * the sandbox workdir mounted at /workspace. Pure (no side effects) so it can be
+ * unit-tested without a Docker daemon.
+ */
+export function buildDockerCommand(opts: {
+  image: string;
+  workdir: string;
+  command: string;
+}): { cmd: string; args: string[] } {
+  return {
+    cmd: 'docker',
+    args: [
+      'run',
+      '--rm',
+      '-v',
+      `${opts.workdir}:/workspace`,
+      '-w',
+      '/workspace',
+      opts.image,
+      'sh',
+      '-lc',
+      opts.command,
+    ],
+  };
+}
+
+/** Substitute {test_file} into a targeted test command template. */
+export function substituteTestCommand(template: string, testFile: string): string {
+  return template.replace(/\{test_file\}/g, testFile);
+}
+
+/** Whether a Docker daemon is reachable. Used to fall back to local execution. */
+export function dockerAvailable(): boolean {
+  try {
+    return spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], { stdio: 'ignore' }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+const TEST_FILE_RE = /(\.test\.|\.spec\.|_test\.|test_)/i;
 
 export interface SandboxOptions {
   rootDir: string;
@@ -91,7 +135,8 @@ export class PatchSandbox {
       log.warn('No unified diff in patch; nothing applied.');
     }
 
-    const validation = await this.validate(workdir);
+    const targetTestFile = filesChanged.find((f) => TEST_FILE_RE.test(f));
+    const validation = await this.validate(workdir, targetTestFile);
     return {
       branch,
       workdir,
@@ -163,8 +208,24 @@ export class PatchSandbox {
     return target;
   }
 
-  private async validate(workdir: string): Promise<ValidationResult> {
+  private async validate(workdir: string, targetTestFile?: string): Promise<ValidationResult> {
     const sb = this.opts.config.sandbox;
+    const useDocker = sb.type === 'docker' && dockerAvailable();
+    if (sb.type === 'docker' && !useDocker) {
+      log.warn('sandbox.type=docker but no Docker daemon is available — falling back to local execution.');
+    }
+    const note = (msg: string): void => {
+      result.notes = result.notes ? `${result.notes}; ${msg}` : msg;
+    };
+    // Execute a command either inside a container or via the local shell.
+    const exec = (command: string) => {
+      if (useDocker) {
+        const { cmd, args } = buildDockerCommand({ image: sb.image, workdir, command });
+        return run(cmd, args, { cwd: workdir, timeoutMs: sb.timeout_seconds * 1000 });
+      }
+      return runShell(command, { cwd: workdir, timeoutMs: sb.timeout_seconds * 1000 });
+    };
+
     const result: ValidationResult = {
       install_command: sb.install_command,
       install_ok: true,
@@ -174,29 +235,39 @@ export class PatchSandbox {
       tests_output_tail: '',
       ran_in_sandbox: !this.opts.inPlace,
     };
+    if (useDocker) note(`ran in docker (${sb.image})`);
 
     if (sb.install_command) {
-      const installRes = await runShell(sb.install_command, {
-        cwd: workdir,
-        timeoutMs: sb.timeout_seconds * 1000,
-      });
+      const installRes = await exec(sb.install_command);
       result.install_ok = installRes.code === 0;
       result.install_output_tail = tail(installRes.stdout + '\n' + installRes.stderr, 30);
       if (!result.install_ok) {
-        result.notes = `install failed exit=${installRes.code}`;
+        note(`install failed exit=${installRes.code}`);
         return result;
       }
     }
 
-    if (sb.test_command) {
-      result.test_commands.push(sb.test_command);
-      const testRes = await runShell(sb.test_command, {
-        cwd: workdir,
-        timeoutMs: sb.timeout_seconds * 1000,
-      });
-      result.tests_passed = testRes.code === 0;
-      result.tests_output_tail = tail(testRes.stdout + '\n' + testRes.stderr, 50);
-      if (testRes.timedOut) result.notes = (result.notes ?? '') + ' test timed out';
+    // Run a targeted test first (focused on the changed test file) when both a
+    // changed test file and a {test_file} template are available, then the full
+    // suite. This makes sandbox.targeted_test_command an actual knob.
+    const testCommands: string[] = [];
+    if (targetTestFile && sb.targeted_test_command && sb.targeted_test_command.includes('{test_file}')) {
+      testCommands.push(substituteTestCommand(sb.targeted_test_command, targetTestFile));
+    }
+    if (sb.test_command) testCommands.push(sb.test_command);
+
+    if (testCommands.length) {
+      let allPassed = true;
+      const outputs: string[] = [];
+      for (const command of testCommands) {
+        result.test_commands.push(command);
+        const testRes = await exec(command);
+        if (testRes.code !== 0) allPassed = false;
+        outputs.push(tail(testRes.stdout + '\n' + testRes.stderr, 30));
+        if (testRes.timedOut) note('test timed out');
+      }
+      result.tests_passed = allPassed;
+      result.tests_output_tail = tail(outputs.join('\n'), 50);
     }
     return result;
   }
