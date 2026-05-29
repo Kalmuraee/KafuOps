@@ -127,6 +127,23 @@ export function buildContext(
       content: clip(fs.readFileSync(archMd, 'utf8'), 2000),
     });
   }
+  // Learning loop: prior incidents and human review feedback, when present.
+  const reviewMd = path.join(memoryDir, 'review-feedback.md');
+  if (fs.existsSync(reviewMd)) {
+    memory.push({
+      path: '.kafuops/memory/review-feedback.md',
+      reason: 'prior human review feedback',
+      content: clip(fs.readFileSync(reviewMd, 'utf8'), 2000),
+    });
+  }
+  const incidentsMd = path.join(memoryDir, 'incidents.md');
+  if (fs.existsSync(incidentsMd)) {
+    memory.push({
+      path: '.kafuops/memory/incidents.md',
+      reason: 'prior incident history',
+      content: clip(fs.readFileSync(incidentsMd, 'utf8'), 2000),
+    });
+  }
 
   // Log excerpts. Priority:
   //   1. An in-memory ring buffer passed by the caller (live wrapper/agent run).

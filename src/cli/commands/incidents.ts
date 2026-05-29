@@ -4,6 +4,7 @@ import { IncidentStore } from '../../incident/store.js';
 import { buildContext } from '../../context/builder.js';
 import { LLMOrchestrator } from '../../llm/orchestrator.js';
 import { processIncidentToMr } from '../../incident/pipeline.js';
+import { recordReviewFeedback } from '../../scanner/incident-memory.js';
 import { log } from '../../util/logger.js';
 
 export async function listIncidents(): Promise<void> {
@@ -111,6 +112,26 @@ export async function openMrCommand(id: string, options: OpenMrOptions = {}): Pr
 }
 
 export async function markResolved(id: string): Promise<void> {
+  await setIncidentOutcome(id, 'resolved');
+}
+
+export async function markMerged(id: string, opts: { note?: string } = {}): Promise<void> {
+  await setIncidentOutcome(id, 'merged', opts.note);
+}
+
+export async function markRejected(id: string, opts: { note?: string } = {}): Promise<void> {
+  await setIncidentOutcome(id, 'rejected', opts.note);
+}
+
+/**
+ * Apply a human review outcome to an incident and record it in the review-feedback
+ * memory file (the feedback half of the learning loop).
+ */
+async function setIncidentOutcome(
+  id: string,
+  outcome: 'resolved' | 'merged' | 'rejected',
+  note?: string,
+): Promise<void> {
   const { rootDir } = loadConfigOrExit({ allowMissing: true });
   const store = new IncidentStore(rootDir);
   const inc = store.load(id);
@@ -118,7 +139,8 @@ export async function markResolved(id: string): Promise<void> {
     log.error(`Incident ${id} not found`);
     process.exit(1);
   }
-  inc.status = 'resolved';
+  inc.status = outcome;
   store.save(inc);
-  log.ok(`Incident ${id} marked resolved.`);
+  recordReviewFeedback(rootDir, inc, outcome, note);
+  log.ok(`Incident ${id} marked ${outcome} (recorded in review-feedback memory).`);
 }

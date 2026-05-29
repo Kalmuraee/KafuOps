@@ -12,6 +12,8 @@ import {
   buildContextCommand,
   openMrCommand,
   markResolved,
+  markMerged,
+  markRejected,
 } from './commands/incidents.js';
 import { simulateCommand } from './commands/simulate.js';
 import { memoryShow, memoryUpdate, memoryValidate, memoryDiff } from './commands/memory.js';
@@ -111,6 +113,16 @@ incidents
   .command('mark-resolved <id>')
   .description('Close an incident manually.')
   .action(async (id) => markResolved(id));
+incidents
+  .command('mark-merged <id>')
+  .description('Record that a reviewer merged the MR (feeds review-feedback memory).')
+  .option('--note <text>', 'reviewer note to remember')
+  .action(async (id, opts) => markMerged(id, { note: opts.note }));
+incidents
+  .command('mark-rejected <id>')
+  .description('Record that a reviewer rejected the MR (feeds review-feedback memory).')
+  .option('--note <text>', 'reviewer note to remember')
+  .action(async (id, opts) => markRejected(id, { note: opts.note }));
 
 program
   .command('simulate')

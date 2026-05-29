@@ -11,6 +11,7 @@ import { buildMrPayload } from '../mr/creator.js';
 import { openGithubPr, mergeGithubPr, MrCreateResult } from '../mr/github.js';
 import { openGitlabMr, mergeGitlabMr } from '../mr/gitlab.js';
 import { decideMrAction } from '../mr/decide.js';
+import { recordIncidentMemory } from '../scanner/incident-memory.js';
 import { log } from '../util/logger.js';
 
 export interface PipelineOptions {
@@ -142,6 +143,14 @@ export async function processIncidentToMr(
     mr_explanation: explanation,
   });
   store.writeArtifact(inc.id, 'mr-body.md', payload.body);
+
+  // Living memory: record the attempt regardless of whether the MR opens.
+  recordIncidentMemory(rootDir, inc, {
+    rootCause: rc.suspected_root_cause,
+    filesChanged,
+    confidence: confidence.score,
+    riskLevel: blast.risk_level,
+  });
 
   const decision = decideMrAction(config, { dryRun: options.dryRun, requiresApproval });
 
