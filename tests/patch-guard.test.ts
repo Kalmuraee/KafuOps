@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { validatePatchPaths } from '../src/sandbox/runner.js';
+import { validatePatchPaths, changedFilesFromDiff } from '../src/sandbox/runner.js';
+
+describe('changedFilesFromDiff', () => {
+  it('extracts target paths from a unified diff', () => {
+    const diff = ['diff --git a/src/x.ts b/src/x.ts', '--- a/src/x.ts', '+++ b/src/x.ts', '@@ -1 +1 @@', '-a', '+b'].join('\n');
+    expect(changedFilesFromDiff(diff)).toEqual(['src/x.ts']);
+  });
+  it('handles new files (--- /dev/null) and dedups', () => {
+    const diff = ['--- /dev/null', '+++ b/src/new.ts', '@@ -0,0 +1 @@', '+x', '--- a/src/new.ts', '+++ b/src/new.ts'].join('\n');
+    expect(changedFilesFromDiff(diff)).toEqual(['src/new.ts']);
+  });
+});
 
 const clean = ['diff --git a/src/x.ts b/src/x.ts', '--- a/src/x.ts', '+++ b/src/x.ts', '@@ -1 +1 @@', '-a', '+b'].join('\n');
 

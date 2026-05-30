@@ -76,6 +76,22 @@ export function validatePatchPaths(diff: string): { ok: boolean; offending: stri
   return { ok: offending.length === 0, offending: [...new Set(offending)] };
 }
 
+/**
+ * Extract the set of files a unified diff changes (its `+++ b/<path>` targets).
+ * Used as a fallback when `git status` is unavailable (e.g. --in-place on a
+ * non-git dir) so confidence/blast-radius/MR see the real changed files.
+ */
+export function changedFilesFromDiff(diff: string): string[] {
+  const out: string[] = [];
+  for (const raw of diff.split(/\r?\n/)) {
+    const m = /^\+\+\+ (?:b\/)?(.+?)\s*$/.exec(raw);
+    if (!m) continue;
+    const p = m[1].replace(/^["']|["']$/g, '');
+    if (p && p !== '/dev/null') out.push(p);
+  }
+  return [...new Set(out)];
+}
+
 export interface SandboxOptions {
   rootDir: string;
   config: KafuOpsConfig;
@@ -152,6 +168,9 @@ export class PatchSandbox {
           const m = /^[ MARD?]{2}\s+(.+)$/.exec(line);
           if (m) filesChanged.push(m[1]);
         }
+        // Fallback: git status is empty/unavailable (e.g. --in-place on a non-git
+        // dir) → derive changed files from the diff so downstream gates see them.
+        if (!filesChanged.length) filesChanged.push(...changedFilesFromDiff(patch.unified_diff));
         if (inGit) {
           await run('git', ['add', '-A'], { cwd: workdir });
         }

@@ -15,37 +15,42 @@ import { run } from '../util/shell.js';
 import { withRetry, isTransientLLMError } from '../util/retry.js';
 import { log } from '../util/logger.js';
 
+// Resilient schemas: real models drift from our enums and occasionally omit
+// fields. Rather than hard-fail the whole pipeline, coerce each field to a sane
+// fallback (`.catch`) so a slightly-off response is still usable.
 const RootCauseSchema = z.object({
-  classification: z.enum([
-    'code_bug',
-    'configuration_issue',
-    'missing_environment_variable',
-    'third_party_outage',
-    'database_migration_issue',
-    'schema_mismatch',
-    'data_quality_issue',
-    'insufficient_telemetry',
-    'unknown',
-  ]),
-  suspected_root_cause: z.string(),
-  evidence: z.array(z.string()),
-  files_to_read_next: z.array(z.string()),
-  should_attempt_fix: z.boolean(),
-  confidence: z.number().min(0).max(1),
+  classification: z
+    .enum([
+      'code_bug',
+      'configuration_issue',
+      'missing_environment_variable',
+      'third_party_outage',
+      'database_migration_issue',
+      'schema_mismatch',
+      'data_quality_issue',
+      'insufficient_telemetry',
+      'unknown',
+    ])
+    .catch('code_bug'),
+  suspected_root_cause: z.string().catch('(no root cause provided)'),
+  evidence: z.array(z.string()).catch([]),
+  files_to_read_next: z.array(z.string()).catch([]),
+  should_attempt_fix: z.boolean().catch(true),
+  confidence: z.number().catch(0.5),
 });
 
 const PatchPlanSchema = z.object({
-  patch_type: z.enum(['bug_fix', 'config_fix', 'test_only', 'investigation_only']),
-  files_to_modify: z.array(z.string()),
-  test_strategy: z.string(),
-  risk_level: z.enum(['low', 'medium', 'high', 'critical']),
-  reason: z.string(),
+  patch_type: z.enum(['bug_fix', 'config_fix', 'test_only', 'investigation_only']).catch('bug_fix'),
+  files_to_modify: z.array(z.string()).catch([]),
+  test_strategy: z.string().catch(''),
+  risk_level: z.enum(['low', 'medium', 'high', 'critical']).catch('medium'),
+  reason: z.string().catch(''),
 });
 
 const CodePatchSchema = z.object({
-  unified_diff: z.string(),
-  summary: z.string(),
-  new_test_files: z.array(z.string()).default([]),
+  unified_diff: z.string().catch(''),
+  summary: z.string().catch(''),
+  new_test_files: z.array(z.string()).default([]).catch([]),
 });
 
 export type LLMProvider = 'openai' | 'anthropic' | 'codex' | 'claude-cli' | 'dry-run';
@@ -176,7 +181,7 @@ Return JSON matching the schema. If evidence is weak, set should_attempt_fix=fal
       user: userContent,
       bundle,
       incidentId: incident.id,
-      schema: RootCauseSchema,
+      schema: RootCauseSchema as unknown as z.ZodType<RootCauseResult>,
     });
     return text;
   }
@@ -200,7 +205,7 @@ Only list files that already appear in the repository files block. Return JSON.`
       user: userContent,
       bundle,
       incidentId: incident.id,
-      schema: PatchPlanSchema,
+      schema: PatchPlanSchema as unknown as z.ZodType<PatchPlan>,
     });
   }
 
@@ -236,7 +241,7 @@ Return JSON with the full corrected unified diff in unified_diff.`;
       user: userContent,
       bundle,
       incidentId: incident.id,
-      schema: CodePatchSchema,
+      schema: CodePatchSchema as unknown as z.ZodType<CodePatch>,
     });
   }
 
@@ -262,7 +267,7 @@ Return JSON with the full unified diff in unified_diff.`;
       user: userContent,
       bundle,
       incidentId: incident.id,
-      schema: CodePatchSchema,
+      schema: CodePatchSchema as unknown as z.ZodType<CodePatch>,
     });
   }
 
@@ -272,37 +277,64 @@ Return JSON with the full unified diff in unified_diff.`;
         ', ',
       )}. Manual review required.`;
     }
+    // The MR description is free text, not structured data — don't demand JSON
+    // (real models return prose/markdown). Use the raw model text, with a
+    // deterministic fallback if the call fails.
     const userContent = `${renderEvidenceBlock(incident, bundle)}
 
 # Task
 Write a concise, human-readable MR description explaining what changed, why, and how it was validated.
 Plan: ${JSON.stringify(plan)}
-Return JSON: { "text": "..." }`;
-    const result = await this.callJson({
-      purpose: 'mr_explanation',
-      model: this.opts.config.llm.models.analysis,
-      systemExtra: '',
-      user: userContent,
-      bundle,
-      incidentId: incident.id,
-      schema: z.object({ text: z.string() }),
-    });
-    return result.text;
+Output the description as plain prose. No JSON, no code fences.`;
+    try {
+      const raw = await this.callProvider({
+        purpose: 'mr_explanation',
+        model: this.opts.config.llm.models.analysis,
+        systemExtra: '',
+        user: userContent,
+        bundle,
+      });
+      const text = stripFences(raw).trim();
+      if (text) {
+        this.recordAudit('mr_explanation', this.opts.config.llm.models.analysis, bundle, incident.id, text);
+        return text;
+      }
+    } catch (err) {
+      log.warn(`mr_explanation failed, using a deterministic summary: ${(err as Error).message}`);
+    }
+    return `KafuOps generated a patch for ${incident.id}. Files: ${plan.files_to_modify.join(', ') || '(see diff)'}. Manual review required.`;
   }
 
-  private async callJson<T>(args: {
+  private recordAudit(
+    purpose: string,
+    model: string,
+    bundle: ContextBundle,
+    incidentId: string,
+    summary: string,
+  ): void {
+    if (!this.opts.config.privacy.audit_model_context) return;
+    const tokenEstimate = Math.ceil((summary.length + SYSTEM_BASE.length) / 4);
+    this.audit.record({
+      incident_id: incidentId,
+      purpose,
+      model,
+      bundle,
+      prompt_token_estimate: tokenEstimate,
+      response_summary: summary.slice(0, 500),
+    });
+  }
+
+  /**
+   * Send one request to the active provider and return its raw text. Applies the
+   * require_redaction gate and transient-error retry; does NOT parse JSON.
+   */
+  private async callProvider(args: {
     purpose: string;
     model: string;
     systemExtra: string;
     user: string;
     bundle: ContextBundle;
-    incidentId: string;
-    schema: z.ZodType<T>;
-  }): Promise<T> {
-    // Privacy gate: never send un-redacted context to a real model when the
-    // require_redaction policy is on. This is the enforcement point for
-    // `policies.model_calls.require_redaction` — the dry-run path never reaches
-    // here, so we only guard live calls.
+  }): Promise<string> {
     if (
       this.opts.config.policies.model_calls.require_redaction &&
       !args.bundle.privacy.redaction_applied
@@ -316,8 +348,7 @@ Return JSON: { "text": "..." }`;
     log.debug(
       `LLM call provider=${this.activeProvider} purpose=${args.purpose} model=${args.model} ~${tokenEstimate} tokens`,
     );
-    // Retry transient provider failures (429 / 5xx / timeouts) with backoff.
-    const text = await withRetry(
+    return withRetry(
       (attempt) => {
         if (attempt > 0) log.warn(`LLM retry ${attempt} for ${args.purpose} (provider=${this.activeProvider})`);
         if (this.activeProvider === 'openai') return this.callOpenAI(args);
@@ -327,6 +358,18 @@ Return JSON: { "text": "..." }`;
       },
       { retries: this.opts.config.llm.max_retries, isRetryable: isTransientLLMError },
     );
+  }
+
+  private async callJson<T>(args: {
+    purpose: string;
+    model: string;
+    systemExtra: string;
+    user: string;
+    bundle: ContextBundle;
+    incidentId: string;
+    schema: z.ZodType<T>;
+  }): Promise<T> {
+    const text = await this.callProvider(args);
     const cleaned = extractJson(text);
     let parsed: unknown;
     try {
@@ -340,16 +383,7 @@ Return JSON: { "text": "..." }`;
         `LLM response did not match schema for ${args.purpose}: ${result.error.issues.map((i) => i.message).join(', ')}`,
       );
     }
-    if (this.opts.config.privacy.audit_model_context) {
-      this.audit.record({
-        incident_id: args.incidentId,
-        purpose: args.purpose,
-        model: args.model,
-        bundle: args.bundle,
-        prompt_token_estimate: tokenEstimate,
-        response_summary: JSON.stringify(result.data).slice(0, 500),
-      });
-    }
+    this.recordAudit(args.purpose, args.model, args.bundle, args.incidentId, JSON.stringify(result.data));
     return result.data;
   }
 
@@ -427,11 +461,9 @@ Return JSON: { "text": "..." }`;
     user: string;
   }): Promise<string> {
     const provider = this.activeProvider as 'codex' | 'claude-cli';
-    const prompt = [
-      `${SYSTEM_BASE}\n${args.systemExtra}`.trim(),
-      args.user,
-      'Return ONLY a single JSON object — no prose, no markdown fences.',
-    ].join('\n\n');
+    // The per-call user prompt specifies the expected format (JSON for the
+    // structured stages, prose for mr_explanation), so don't force JSON here.
+    const prompt = [`${SYSTEM_BASE}\n${args.systemExtra}`.trim(), args.user].join('\n\n');
     const { cmd, args: cmdArgs } = buildCliCommand(provider, prompt, args.model);
     const res = await this.cliRunner(cmd, cmdArgs);
     if (res.code !== 0) {
@@ -483,6 +515,12 @@ Return JSON: { "text": "..." }`;
       new_test_files: [],
     };
   }
+}
+
+/** Strip a single surrounding ``` code fence from free-text (e.g. MR prose). */
+function stripFences(text: string): string {
+  const m = /^```[a-zA-Z]*\s*([\s\S]*?)\s*```\s*$/.exec(text.trim());
+  return m ? m[1] : text;
 }
 
 /**

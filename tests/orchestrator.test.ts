@@ -87,6 +87,21 @@ describe('LLMOrchestrator provider dispatch', () => {
     expect(o.getProvider()).toBe('dry-run');
   });
 
+  it('coerces an out-of-enum / partial root-cause response instead of crashing', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    // A real model returned a reasonable-but-off classification and omitted arrays.
+    const fakeClient = {
+      chat: { completions: { create: async () => ({ choices: [{ message: { content: JSON.stringify({ classification: 'logic_bug', suspected_root_cause: 'wrong operator' }) } }] }) } },
+    } as any;
+    const cfg = ConfigSchema.parse({ project: { name: 't' }, llm: { provider: 'openai' } });
+    const o = new LLMOrchestrator({ rootDir: freshDir(), config: cfg, client: fakeClient });
+    const rc = await o.rootCause(fakeIncident(), fakeBundle());
+    expect(rc.classification).toBe('code_bug'); // coerced from unknown 'logic_bug'
+    expect(rc.suspected_root_cause).toBe('wrong operator');
+    expect(Array.isArray(rc.evidence)).toBe(true);
+    expect(typeof rc.should_attempt_fix).toBe('boolean');
+  });
+
   it('dry-run rootCause still produces a usable result', async () => {
     const cfg = ConfigSchema.parse({ project: { name: 't' }, llm: { provider: 'none' } });
     const o = new LLMOrchestrator({ rootDir: freshDir(), config: cfg });

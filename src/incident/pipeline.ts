@@ -156,6 +156,15 @@ export async function processIncidentToMr(
     return { incidentId: id, status: 'blocked', reason: 'critical_blast_radius', confidence: confidence.score, attempts };
   }
 
+  // Ensure the MR always shows a root cause: fall back to the analysis output
+  // when the plan's reason came back empty (models sometimes put it elsewhere).
+  if (!plan.reason || !plan.reason.trim()) {
+    const fromRc = rc.suspected_root_cause && !rc.suspected_root_cause.startsWith('(no root cause')
+      ? rc.suspected_root_cause
+      : rc.evidence[0];
+    plan.reason = fromRc || 'Root cause inferred from the failing test and stack frame.';
+  }
+
   const explanation = await orch.mrExplanation(inc, built.bundle, plan);
   const payload = buildMrPayload(sb.branch, config.repo.default_branch, {
     incident: inc,
