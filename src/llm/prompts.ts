@@ -57,6 +57,12 @@ export function renderEvidenceBlock(incident: Incident, bundle: ContextBundle): 
   parts.push(`## Repository files`);
   for (const f of bundle.files) {
     parts.push(`### ${f.path} — ${f.reason} (strength=${f.evidence_strength})`);
+    if (f.focus) {
+      parts.push(`Failing region (line ${f.focus.line} marked \`>\`):`);
+      parts.push('```');
+      parts.push(f.focus.snippet);
+      parts.push('```');
+    }
     parts.push('```');
     parts.push(f.content);
     parts.push('```');

@@ -2,6 +2,17 @@
 
 ## 0.3.0 — quality (in progress)
 
+### Context intelligence
+
+- **Failing-region focus**: each suspect file now carries a numbered window of
+  code around the failing stack-frame line (marked `>`), rendered prominently to
+  the model — it fixes the exact spot instead of re-reading the whole file.
+- **Deploy-diff awareness**: the context now includes recent git history of the
+  suspect files (a file changed just before the incident is a prime regression
+  suspect).
+- Redaction now runs over the full file before truncation (so focus snippets are
+  sanitized too); the top stack-frame file is ranked first.
+
 ### Fix quality & autonomy
 
 - **Agentic self-correcting fix loop**: the pipeline now applies a patch, runs
