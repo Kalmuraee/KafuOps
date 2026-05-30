@@ -1,8 +1,11 @@
 name: Release
 
-# Publishes kafuops to npm when a version tag is pushed (e.g. `git tag v0.3.0 && git push origin v0.3.0`).
-# Requires an `NPM_TOKEN` repository secret: a granular/automation token with publish rights.
-# Settings → Secrets and variables → Actions → New repository secret.
+# Publishes kafuops to npm AND creates a GitHub Release when a version tag is
+# pushed (e.g. `git tag v0.3.0 && git push origin v0.3.0`).
+# Requires an `NPM_TOKEN` repository secret: an npm **Automation** token (classic
+# Automation or a granular token) — these bypass 2FA so CI can publish headlessly.
+# A classic "Publish" token will NOT work (it still prompts for an OTP).
+# Add it at: Settings → Secrets and variables → Actions → New repository secret.
 
 on:
   push:
@@ -13,7 +16,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # create the GitHub Release
       id-token: write # enables npm provenance
     steps:
       - uses: actions/checkout@v6
@@ -46,3 +49,20 @@ jobs:
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          printf '%s\n' \
+            "Published to npm: https://www.npmjs.com/package/kafuops/v/$VERSION" \
+            "" \
+            '```bash' \
+            "npm install -g kafuops@$VERSION" \
+            '```' > release-notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "kafuops $GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes-file release-notes.md

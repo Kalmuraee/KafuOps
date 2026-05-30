@@ -23,8 +23,14 @@ git push && git push --tags
 ```
 
 Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds,
-tests, verifies the tag matches `package.json`, and runs
-`npm publish --provenance --access public`.
+tests, verifies the tag matches `package.json`, runs
+`npm publish --provenance --access public` (the provenance attestation links the
+npm package to the exact GitHub commit + build), and creates a matching
+**GitHub Release** with auto-generated notes.
+
+> The `NPM_TOKEN` must be an **Automation** token (classic Automation or a
+> granular token). A classic *Publish* token still requires an OTP and will fail
+> in CI with `EOTP`.
 
 ## Publishing manually (no CI)
 
