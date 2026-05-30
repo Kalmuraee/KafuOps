@@ -1,0 +1,405 @@
+# KafuOps — full documentation for LLMs
+
+> Open-source, self-hostable AI production-debugging agent (TypeScript/Node.js CLI). It turns backend incidents into sandbox-validated, evidence-backed merge requests. Bring your own LLM (OpenAI, Anthropic, or a local Codex/Claude CLI); no continuous logs are streamed to the model. License: AGPL-3.0-only. Install: `npm install -g kafuops` (Node.js >= 20). Repo: https://github.com/Kalmuraee/KafuOps · Site: https://kalmuraee.github.io/KafuOps/ · npm: https://www.npmjs.com/package/kafuops
+
+This file concatenates the project's primary docs for LLM ingestion (llmstxt.org).
+
+---
+
+# README
+
+<p align="center">
+  <a href="https://kalmuraee.github.io/KafuOps/">
+    <img src="assets/wordmark.svg" alt="KafuOps" width="420">
+  </a>
+</p>
+
+<p align="center">
+  <strong>Turn backend incidents into evidence-backed merge requests.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Kalmuraee/KafuOps/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Kalmuraee/KafuOps/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://www.npmjs.com/package/kafuops"><img alt="npm version" src="https://img.shields.io/npm/v/kafuops?style=flat-square&color=0F766E"></a>
+  <a href="https://www.npmjs.com/package/kafuops"><img alt="npm downloads" src="https://img.shields.io/npm/dm/kafuops?style=flat-square&color=0F766E"></a>
+  <a href="https://www.npmjs.com/package/kafuops"><img alt="node" src="https://img.shields.io/node/v/kafuops?style=flat-square&color=0F766E"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-0F766E?style=flat-square"></a>
+  <a href="STATUS.md"><img alt="implementation status" src="https://img.shields.io/badge/STATUS.md-honest%20mapping-F59E0B?style=flat-square"></a>
+  <a href="https://kalmuraee.github.io/KafuOps/"><img alt="site" src="https://img.shields.io/badge/site-kalmuraee.github.io%2FKafuOps-0F766E?style=flat-square"></a>
+</p>
+
+---
+
+KafuOps is an open-source, self-hostable **AI production-debugging agent** (an AI SRE) for backend and platform teams. It turns real production incidents into **sandbox-validated, evidence-backed merge requests** with a confidence score — bring your own LLM (OpenAI, Anthropic, or a local Codex/Claude CLI). Built for SREs, on-call, and DevOps engineers who want automated root cause analysis and incident-to-pull-request fixes without streaming their logs to a model.
+
+KafuOps is designed around one important rule:
+
+> It does not stream all logs to an LLM. It watches locally, detects meaningful incidents, builds a small sanitized evidence packet, grounds the model with only the relevant files, and opens a reviewable MR or PR.
+
+> 📋 **Looking for the honest picture of what works today vs. what is spec only?**
+> See [STATUS.md](STATUS.md) — every doc in `docs/` is mapped to ✅ implemented, 🟡 partial, or 🔲 not yet.
+
+## See it fix a real bug
+
+A planted bug in a tiny checkout service — KafuOps diagnoses it, writes the patch, **self-corrects when the first attempt fails**, validates the fix in a sandbox, and opens a reviewable MR. This run is driven by the locally-installed **Claude CLI** (no API key).
+
+<p align="center">
+  <a href="https://kalmuraee.github.io/KafuOps/#demo"><img src="assets/demo/kafuops.gif" alt="KafuOps fixing a bug end to end" width="820"></a><br>
+  <em>Unedited recording · <a href="https://kalmuraee.github.io/KafuOps/">watch on the site</a> · reproduce locally with <code>scripts/demo.sh</code></em>
+</p>
+
+The fix KafuOps generated, after the sandbox test went green:
+
+```diff
+- return price - price * percent;
++ return price - price * (percent / 100);
+```
+
+```
+$ scripts/demo.sh
+### Before — the test fails (red):
+AssertionError: 20% off $100 should be $80   (-1900 !== 80)
+
+### KafuOps runs (provider: claude CLI):
+! attempt 1: patch did not apply → revise → retry
+✓ attempt 2: patch applied, tests passed        # self-correcting loop
+  confidence=80 (high)   risk=low
+! MR ready for review — saved mr-body.md
+
+### After — the test passes (green):
+all tests passed
+```
+
+## What KafuOps does
+
+- Observes backend logs (wrapper mode + sidecar file tailing), OpenTelemetry traces, runtime errors, and alert webhooks (Sentry/Datadog/Alertmanager).
+- Builds a living `.kafuops/memory/` folder that explains the codebase, architecture, routes, services, database usage, queues, external APIs, and previous incidents.
+- Detects errors and deduplicates noisy events into incidents.
+- Selects the relevant source files, tests, configs, traces, and log snippets.
+- Calls an LLM only after an incident trigger and only with sanitized context.
+- Generates a failing regression test when possible.
+- Creates a fix in a sandbox branch.
+- Runs configured tests.
+- Opens a GitHub PR or GitLab MR with root cause, evidence, confidence score, blast radius, and validation notes.
+- Updates project memory after review and merge.
+
+## Recommended architecture
+
+For production, KafuOps should run **beside** your backend, not inside it.
+
+The default mode is a **sidecar/agent + control-plane worker** model:
+
+```mermaid
+graph LR
+  Backend[Backend Runtime] -->|stdout/stderr logs| Agent[KafuOps Agent]
+  Backend -->|OpenTelemetry traces/errors| Agent
+  Alerts[Sentry/Datadog/Alertmanager/Webhooks] --> Agent
+  Agent --> Incident[Incident Engine]
+  Incident --> Context[Context Builder]
+  Repo[Git Repository] --> Context
+  Memory[.kafuops/memory] --> Context
+  Context --> LLM[LLM Fix Agent]
+  LLM --> Sandbox[Patch Sandbox]
+  Sandbox --> Git[GitHub PR / GitLab MR]
+```
+
+This keeps your app in control of its own runtime and makes KafuOps easy to adopt without becoming the process manager for production.
+
+For local development and staging, KafuOps can also wrap the backend command:
+
+```bash
+kafuops run -- npm run dev
+kafuops run -- python -m uvicorn app.main:app
+kafuops run -- ./gradlew bootRun
+```
+
+That mode captures stdout/stderr, process exits, stack traces, and runtime metadata directly.
+
+## Quick start
+
+```bash
+cd your-backend-repo
+npx kafuops quickstart      # discover the stack, set up, build memory — one command
+kafuops run -- npm start    # wrap your app and watch for incidents
+```
+
+`quickstart` auto-detects your framework, start command, git remote, and which AI
+is available (it'll use a local **Codex/Claude CLI** with no API key, or an
+OpenAI/Anthropic key). Your key is stored in `.kafuops/.env` (gitignored, mode
+0600) and **loaded automatically** — no manual `export` needed. Run `kafuops
+doctor` any time to check the setup.
+
+Or for production-style setup:
+
+```bash
+kafuops init
+kafuops agent start --config .kafuops.yml
+kafuops worker start --config .kafuops.yml
+```
+
+## Core design principles
+
+1. **Incident-triggered AI** — no continuous log streaming to the model.
+2. **Small grounded context** — send only the files and evidence needed for this incident.
+3. **Human-reviewable output** — every MR includes evidence, risk, tests, and confidence.
+4. **Memory-first debugging** — every incident improves the project memory.
+5. **Privacy by default** — redaction, file allowlists, audit logs, and local-first processing.
+6. **No auto-merge by default** — KafuOps opens reviewable MRs, not silent production changes.
+
+## FAQ
+
+### What does KafuOps do?
+
+KafuOps is an open-source AI production-debugging agent. It takes a backend incident or signal, builds grounded and redacted context, runs a 4-stage LLM pipeline, and opens a sandbox-validated, evidence-backed merge request with a confidence score for a human to review.
+
+### Is KafuOps open source and self-hostable?
+
+Yes. KafuOps is licensed under AGPL-3.0-only and is fully self-hostable. You run it yourself and connect your own LLM provider — OpenAI, Anthropic, or a local Codex/Claude CLI.
+
+### How is KafuOps different from Sentry Seer or Datadog Bits AI Dev?
+
+Those are closed, SaaS-hosted, and tied to their own telemetry. KafuOps is open-source and self-hostable, is not locked to a single observability vendor, lets you bring your own LLM, and does not stream continuous logs to the model — it grounds context with redaction and a grounding manifest before generating a patch.
+
+### Does KafuOps send my production logs to an AI model?
+
+No continuous logs are streamed to the model. KafuOps grounds each incident with redaction and a grounding manifest, then passes only that scoped context to the LLM, so you keep control of what leaves your environment.
+
+### Will KafuOps merge code automatically?
+
+No. KafuOps validates each candidate fix in a sandbox with a self-correcting loop, then opens a reviewable pull/merge request with evidence and a confidence score. A human reviews and merges — the agent never deploys to production on its own.
+
+### How do I install KafuOps and what does it need?
+
+Install the CLI with `npm install -g kafuops` (Node.js >= 20, ESM/TypeScript). Then run the setup wizard to validate your LLM key and connect your repo. Full docs are at https://kalmuraee.github.io/KafuOps/.
+
+## Documentation
+
+Start here:
+
+- [Documentation index](docs/INDEX.md)
+- [Product brief](PRODUCT_BRIEF.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Setup wizard](docs/SETUP_WIZARD.md)
+- [Runtime modes](docs/RUNTIME_MODES.md)
+- [Error-triggered LLM design](docs/ERROR_TRIGGERED_LLM.md)
+- [Project memory](docs/PROJECT_MEMORY.md)
+- [Security and privacy](docs/SECURITY_PRIVACY.md)
+- [Landing page copy](website/HOME.md)
+
+## Status
+
+The 0.1.0 MVP is implemented as a Node.js/TypeScript package in this repository:
+
+```
+src/         agent, incident engine, scanner, graph, context builder, LLM
+             orchestrator, sandbox, MR/PR creator, webhooks, policies, CLI
+tests/       vitest unit tests
+bin/kafuops  CLI entry point
+Dockerfile   multi-stage build
+examples/    a tiny sample-app to exercise the wrapper-mode incident flow
+```
+
+Quick local check:
+
+```bash
+npm install
+npm run build
+npm test
+node bin/kafuops.js --help
+```
+
+The MVP follows the success criteria in [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md):
+GitHub + GitLab MR creation, OpenAI-grounded analysis, sanitized context
+bundles, grounding manifest per call, redaction at ingest and before model
+calls, regression-test-first sandbox validation, confidence + blast-radius
+scoring, and audit logging of every model call. The implementation runs in
+**dry-run mode** automatically when `OPENAI_API_KEY` or `KAFUOPS_GIT_TOKEN` are
+absent, so the full pipeline can be exercised offline.
+
+As of 0.2.0 the agent observes a live system (sidecar log tailing + OpenTelemetry
+OTLP intake), the `worker` autonomously drives incidents to MRs, and the
+review-feedback memory loop is closed. The documentation in `docs/` and
+`website/` remains the canonical product specification — anything not implemented
+yet (first-class Kubernetes operator/CRD, embedded SDKs, similar-incident
+matching) is on the roadmap in [docs/ROADMAP.md](docs/ROADMAP.md). See
+[STATUS.md](STATUS.md) for the honest doc-by-doc mapping.
+
+
+---
+
+# CLI Reference
+
+# CLI Reference
+
+The KafuOps CLI manages setup, scanning, runtime monitoring, incidents, and MR creation.
+
+## Initialize
+
+```bash
+kafuops init
+```
+
+Starts the setup wizard.
+
+## Doctor
+
+```bash
+kafuops doctor
+```
+
+Checks config, Git access, model access, sandbox settings, and policies.
+
+## Scan
+
+```bash
+kafuops scan
+```
+
+Builds project memory and architecture graph.
+
+Options:
+
+```bash
+kafuops scan --full
+kafuops scan --memory-only
+kafuops scan --graph-only
+kafuops scan --write
+```
+
+## Run backend in wrapper mode
+
+```bash
+kafuops run -- npm run dev
+```
+
+Captures stdout/stderr and runtime errors from a child process.
+
+Options:
+
+```bash
+kafuops run --service api -- npm start
+kafuops run --env staging -- python -m uvicorn app.main:app
+```
+
+## Start agent
+
+```bash
+kafuops agent start --config .kafuops.yml
+```
+
+Starts sidecar/agent mode.
+
+## Start worker
+
+```bash
+kafuops worker start             # poll every 30s
+kafuops worker start --interval 60
+kafuops worker start --once      # process pending incidents once, then exit
+```
+
+The worker drives every pending incident (`created`/`context_built`/`analyzed`)
+through analyse → patch → validate → MR automatically, respecting policy,
+confidence, and `llm.trigger_mode` (it runs with `invocation=auto`, so
+`manual_only` keeps it in dry-run).
+
+## Incidents
+
+```bash
+kafuops incidents list
+kafuops incidents show inc_123
+kafuops incidents analyze inc_123
+kafuops incidents build-context inc_123
+kafuops incidents open-mr inc_123
+kafuops incidents mark-resolved inc_123
+kafuops incidents mark-merged inc_123 --note "approved by on-call"
+kafuops incidents mark-rejected inc_123 --note "masked the real bug"
+```
+
+`mark-merged` / `mark-rejected` record the reviewer's decision in
+`.kafuops/memory/review-feedback.md`, which is fed back into future analyses.
+
+## Update
+
+```bash
+kafuops update            # check the npm registry and install the latest
+kafuops update --print    # just show the install command, don't run it
+kafuops update --pm pnpm  # use pnpm/yarn/bun instead of npm
+```
+
+KafuOps also checks for a new version in the background (at most once a day) and,
+if one exists, prints a small "Update available" notice after a command. The
+check is non-blocking, cached per-user in `~/.kafuops/update-check.json`, and
+silently skipped on failure. Disable it with `KAFUOPS_NO_UPDATE_CHECK=1` (it's
+also off in CI and non-interactive shells).
+
+## Deploy markers
+
+```bash
+kafuops deploy v1.4.2 --commit "$(git rev-parse HEAD)"
+```
+
+Records a deploy. Error-level events arriving within the `deployment_regression`
+window are then correlated to that release (call it from CI after a deploy).
+
+## Status / watch
+
+```bash
+kafuops status              # dashboard: incident counts, recent list, mode/provider
+kafuops watch               # live-refreshing dashboard (Ctrl-C to stop)
+kafuops watch --interval 10
+```
+
+Set `KAFUOPS_LOG_FORMAT=json` for structured single-line JSON logs (useful for
+agents / Kubernetes log pipelines).
+
+## Eval (fix quality)
+
+```bash
+kafuops eval
+```
+
+Runs a seeded suite of buggy fixtures through the full pipeline against your
+configured provider and reports the **fix-success rate**, average patch attempts
+(the self-correcting loop), and confidence calibration. Run it with a real
+provider/key to measure quality; in dry-run it reports ~0% (no real model calls).
+
+## Simulate errors
+
+```bash
+kafuops simulate error --type stacktrace --service api
+kafuops simulate alert --severity critical
+```
+
+## Memory
+
+```bash
+kafuops memory show
+kafuops memory update
+kafuops memory validate
+kafuops memory diff
+```
+
+## Policies
+
+```bash
+kafuops policies validate
+kafuops policies explain --file src/auth/session.ts
+kafuops policies explain --incident inc_123   # decisions for the files the incident's patch changed
+```
+
+## Audit
+
+```bash
+kafuops audit list
+kafuops audit show <model-call-id>
+kafuops audit export --incident inc_123
+```
+
+## Webhooks
+
+```bash
+kafuops webhooks start
+kafuops webhooks test sentry
+kafuops webhooks test alertmanager
+```
+
