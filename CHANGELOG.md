@@ -2,6 +2,13 @@
 
 ## 0.3.0 — quality (in progress)
 
+### Operator experience
+
+- **`kafuops status`** and **`kafuops watch`**: a dashboard of incident counts,
+  open vs terminal, and the recent list — one-shot or live-refreshing.
+- **Structured logging**: `KAFUOPS_LOG_FORMAT=json` emits single-line JSON logs
+  (ANSI-stripped) for agents / Kubernetes log pipelines.
+
 ### Context intelligence
 
 - **Failing-region focus**: each suspect file now carries a numbered window of
