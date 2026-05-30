@@ -5,6 +5,7 @@ import { buildContext } from '../../context/builder.js';
 import { LLMOrchestrator } from '../../llm/orchestrator.js';
 import { processIncidentToMr } from '../../incident/pipeline.js';
 import { recordReviewFeedback } from '../../scanner/incident-memory.js';
+import { spinner } from '../../util/ui.js';
 import { log } from '../../util/logger.js';
 
 export async function listIncidents(): Promise<void> {
@@ -83,12 +84,16 @@ export async function openMrCommand(id: string, options: OpenMrOptions = {}): Pr
   log.info(`Open MR for ${id}`);
   // The full pipeline (analyse → plan → patch → sandbox → gate → MR) lives in
   // incident/pipeline.ts so the worker can reuse it. invocation='manual' because
-  // a human ran this command.
+  // a human ran this command. A spinner narrates each stage (animates on a TTY,
+  // quiet in CI/JSON).
+  const sp = spinner('Starting…');
   const result = await processIncidentToMr(rootDir, config, id, {
     inPlace: !!options.inPlace,
     dryRun: !!options.dryRun,
     invocation: 'manual',
+    onStage: (s) => sp.update(s),
   });
+  sp.stop();
   switch (result.status) {
     case 'no_fix':
       log.warn(`No fix attempted: root-cause analysis recommends no fix (${result.reason}).`);

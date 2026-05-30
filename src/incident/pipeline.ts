@@ -22,6 +22,8 @@ export interface PipelineOptions {
   invocation?: 'manual' | 'auto';
   /** Inject a pre-built orchestrator (used by tests to mock the provider). */
   orchestrator?: LLMOrchestrator;
+  /** Progress callback for each pipeline stage (drives the CLI spinner). */
+  onStage?: (stage: string) => void;
 }
 
 export type PipelineStatus =
@@ -55,13 +57,16 @@ export async function processIncidentToMr(
   id: string,
   options: PipelineOptions = {},
 ): Promise<PipelineResult> {
+  const stage = options.onStage ?? (() => {});
   const store = new IncidentStore(rootDir);
   const inc = store.load(id);
   if (!inc) return { incidentId: id, status: 'not_found' };
 
+  stage('Building grounded context');
   const built = buildContext(rootDir, config, { incident: inc });
   const orch =
     options.orchestrator ?? new LLMOrchestrator({ rootDir, config, invocation: options.invocation ?? 'manual' });
+  stage('Analyzing root cause');
   const rc = await orch.rootCause(inc, built.bundle);
   store.writeArtifact(inc.id, 'root-cause.json', JSON.stringify(rc, null, 2));
   if (!rc.should_attempt_fix) {
@@ -70,6 +75,7 @@ export async function processIncidentToMr(
     return { incidentId: id, status: 'no_fix', reason: rc.classification };
   }
 
+  stage('Planning the smallest viable patch');
   const plan = await orch.patchPlan(inc, built.bundle, rc);
   const policy = new PolicyEngine(config);
 
@@ -81,8 +87,10 @@ export async function processIncidentToMr(
     return { incidentId: id, status: 'blocked', reason: 'policy_deny_pre_apply' };
   }
 
+  stage('Generating the patch');
   let patch = await orch.codePatch(inc, built.bundle, plan);
   const sandbox = new PatchSandbox({ rootDir, config, inPlace: !!options.inPlace });
+  stage('Validating in sandbox (running tests)');
 
   // Agentic self-correction: apply → validate → if it didn't apply or tests
   // failed, feed the failure back to the model to revise, and retry. Bounded by
@@ -96,6 +104,7 @@ export async function processIncidentToMr(
     const failure = !sb.patchApplied
       ? `git apply failed for the previous diff (reason=${sb.reason ?? 'unknown'})`
       : sb.validation.tests_output_tail || 'tests failed';
+    stage(`Tests failed — revising the patch (attempt ${attempts + 1}/${maxAttempts})`);
     const revised = await orch.revisePatch(inc, built.bundle, plan, patch, failure);
     if (!revised.unified_diff || !revised.unified_diff.trim()) break; // model gave up
     patch = revised;
