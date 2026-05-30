@@ -87,6 +87,17 @@ kafuops incidents mark-rejected inc_123 --note "masked the real bug"
 `mark-merged` / `mark-rejected` record the reviewer's decision in
 `.kafuops/memory/review-feedback.md`, which is fed back into future analyses.
 
+## Status / watch
+
+```bash
+kafuops status              # dashboard: incident counts, recent list, mode/provider
+kafuops watch               # live-refreshing dashboard (Ctrl-C to stop)
+kafuops watch --interval 10
+```
+
+Set `KAFUOPS_LOG_FORMAT=json` for structured single-line JSON logs (useful for
+agents / Kubernetes log pipelines).
+
 ## Eval (fix quality)
 
 ```bash

@@ -22,6 +22,7 @@ import { auditList, auditShow, auditExport } from './commands/audit.js';
 import { webhooksStart, webhooksTest } from './commands/webhooks.js';
 import { agentStart, workerStart } from './commands/agent.js';
 import { evalCommand } from './commands/eval.js';
+import { statusCommand, watchCommand } from './commands/status.js';
 
 const program = new Command();
 
@@ -145,6 +146,17 @@ program
   .command('eval')
   .description('Run the seeded fix-quality suite and report fix-success rate.')
   .action(evalCommand);
+
+program
+  .command('status')
+  .description('Show a dashboard of incidents and configuration.')
+  .action(statusCommand);
+
+program
+  .command('watch')
+  .description('Live-refreshing incident dashboard.')
+  .option('--interval <seconds>', 'refresh interval', (v) => Number(v))
+  .action((opts) => watchCommand({ intervalSeconds: opts.interval }));
 
 const memory = program.command('memory').description('Inspect or update project memory.');
 memory.command('show').action(memoryShow);
