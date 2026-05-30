@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { minimatch } from 'minimatch';
 import { KafuOpsConfig } from '../config/schema.js';
 import { ContextBundle, ContextFile, EvidencePacket, Incident, LogExcerpt } from '../types/index.js';
@@ -71,10 +72,31 @@ export function buildContext(
       }
     }
   }
-  // 4) Route handler file (already covered by graph, but explicit for routes mentioned in event)
-  // 5) Cap by max_context_files
+  // Map each suspect file to the failing line from the stack frames, so we can
+  // attach a focused "failing region" snippet (the model fixes better when it
+  // sees the exact line, not just the whole file).
+  const frameLines = new Map<string, number>();
+  const topRel = input.incident.top_frame_file ? resolveFile(rootDir, input.incident.top_frame_file) : null;
+  if (topRel && input.incident.top_frame_line) frameLines.set(topRel, input.incident.top_frame_line);
+  for (const ev of input.incident.events) {
+    if (!ev.stacktrace) continue;
+    for (const fr of parseFrames(ev.stacktrace)) {
+      const rel = resolveFile(rootDir, fr.file);
+      if (rel && fr.line && !frameLines.has(rel)) frameLines.set(rel, fr.line);
+    }
+  }
+
+  // 5) Cap by max_context_files (top stack frame first, then by strength)
   const maxFiles = config.llm.max_context_files;
-  const ordered = [...candidates].sort((a, b) => rank(a.strength) - rank(b.strength)).slice(0, maxFiles);
+  const ordered = [...candidates]
+    .sort((a, b) => {
+      if (topRel) {
+        if (a.file === topRel && b.file !== topRel) return -1;
+        if (b.file === topRel && a.file !== topRel) return 1;
+      }
+      return rank(a.strength) - rank(b.strength);
+    })
+    .slice(0, maxFiles);
 
   const files: ContextFile[] = [];
   const allStats: RedactionStats[] = [];
@@ -84,27 +106,32 @@ export function buildContext(
       continue;
     }
     const full = path.join(rootDir, c.file);
-    let content: string;
+    let fullText: string;
     let originalBytes: number;
     try {
       const buf = fs.readFileSync(full, 'utf8');
       originalBytes = Buffer.byteLength(buf, 'utf8');
-      content = buf.slice(0, config.llm.max_file_chars);
-      if (buf.length > content.length) content += `\n// … truncated, original was ${buf.length} chars`;
+      fullText = buf;
     } catch {
       continue;
     }
+    // Redact the whole file first so the focus snippet is also sanitized, then
+    // truncate the bulk content to the configured budget.
     if (config.privacy.redact_before_llm) {
-      const r = redactor.redactText(content);
+      const r = redactor.redactText(fullText);
       allStats.push(r.stats);
-      content = r.text;
+      fullText = r.text;
     }
+    let content = fullText.slice(0, config.llm.max_file_chars);
+    if (fullText.length > content.length) content += `\n// … truncated, original was ${originalBytes} bytes`;
+    const focusLine = frameLines.get(c.file);
     files.push({
       path: c.file,
       reason: c.reason,
       evidence_strength: c.strength,
       content,
       original_bytes: originalBytes,
+      ...(focusLine ? { focus: { line: focusLine, snippet: extractFocusSnippet(fullText, focusLine) } } : {}),
     });
   }
 
@@ -142,6 +169,24 @@ export function buildContext(
       path: '.kafuops/memory/incidents.md',
       reason: 'prior incident history',
       content: clip(fs.readFileSync(incidentsMd, 'utf8'), 2000),
+    });
+  }
+
+  // Deploy-diff awareness: recent git history of the suspect files. A file that
+  // changed just before the incident is a prime regression suspect.
+  const histLines: string[] = [];
+  for (const suspect of [...frameLines.keys()].slice(0, 3)) {
+    const h = recentFileHistory(rootDir, suspect, 3);
+    if (h.commits.length) {
+      histLines.push(`### ${suspect}`);
+      for (const commit of h.commits) histLines.push(`- ${commit}`);
+    }
+  }
+  if (histLines.length) {
+    memory.push({
+      path: '.kafuops/memory/recent-changes',
+      reason: 'recent git history of suspect files (possible regression source)',
+      content: histLines.join('\n'),
     });
   }
 
@@ -249,6 +294,49 @@ function parseFrameFiles(stack: string): string[] {
     out.push(m[1]);
   }
   return out;
+}
+
+/** Parse stack frames capturing both file and line number (Node + Python). */
+function parseFrames(stack: string): Array<{ file: string; line?: number }> {
+  const out: Array<{ file: string; line?: number }> = [];
+  for (const m of stack.matchAll(/at\s+(?:[\w$.<>\[\] ]+?\s+\()?(.+?):(\d+):\d+\)?/g)) {
+    if (m[1]) out.push({ file: m[1], line: Number(m[2]) });
+  }
+  for (const m of stack.matchAll(/File\s+"([^"]+)",\s+line\s+(\d+)/g)) {
+    out.push({ file: m[1], line: Number(m[2]) });
+  }
+  return out;
+}
+
+/**
+ * Extract the failing region: a numbered window of `±window` lines around the
+ * 1-based `line`, with a `>` marker on the failing line. Helps the model fix the
+ * exact spot instead of re-reading the whole file.
+ */
+export function extractFocusSnippet(content: string, line: number, window = 6): string {
+  const lines = content.split(/\r?\n/);
+  const idx = line - 1;
+  const start = Math.max(0, idx - window);
+  const end = Math.min(lines.length, idx + window + 1);
+  const out: string[] = [];
+  for (let i = start; i < end; i++) {
+    out.push(`${i === idx ? '>' : ' '} ${i + 1} | ${lines[i]}`);
+  }
+  return out.join('\n');
+}
+
+/** Recent commit subjects touching a file (deploy-diff awareness). Empty if not a git repo. */
+export function recentFileHistory(rootDir: string, file: string, maxCommits = 3): { commits: string[] } {
+  try {
+    const res = spawnSync('git', ['-C', rootDir, 'log', '-n', String(maxCommits), '--oneline', '--', file], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    if (res.status !== 0 || !res.stdout) return { commits: [] };
+    return { commits: res.stdout.trim().split('\n').filter(Boolean) };
+  } catch {
+    return { commits: [] };
+  }
 }
 
 /** Try to map an absolute path or partial path to a repo-relative file path. */

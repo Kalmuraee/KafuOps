@@ -83,6 +83,8 @@ export interface ContextFile {
   content: string;
   /** Original byte length before truncation. */
   original_bytes: number;
+  /** The failing region (line + a numbered window) when a stack frame points here. */
+  focus?: { line: number; snippet: string };
 }
 
 export interface ContextBundle {
