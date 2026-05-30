@@ -87,6 +87,15 @@ kafuops incidents mark-rejected inc_123 --note "masked the real bug"
 `mark-merged` / `mark-rejected` record the reviewer's decision in
 `.kafuops/memory/review-feedback.md`, which is fed back into future analyses.
 
+## Deploy markers
+
+```bash
+kafuops deploy v1.4.2 --commit "$(git rev-parse HEAD)"
+```
+
+Records a deploy. Error-level events arriving within the `deployment_regression`
+window are then correlated to that release (call it from CI after a deploy).
+
 ## Status / watch
 
 ```bash

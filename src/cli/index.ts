@@ -23,6 +23,7 @@ import { webhooksStart, webhooksTest } from './commands/webhooks.js';
 import { agentStart, workerStart } from './commands/agent.js';
 import { evalCommand } from './commands/eval.js';
 import { statusCommand, watchCommand } from './commands/status.js';
+import { deployCommand } from './commands/deploy.js';
 
 const program = new Command();
 
@@ -146,6 +147,12 @@ program
   .command('eval')
   .description('Run the seeded fix-quality suite and report fix-success rate.')
   .action(evalCommand);
+
+program
+  .command('deploy <version>')
+  .description('Record a deploy marker (correlates later errors as regressions).')
+  .option('--commit <sha>', 'commit SHA for the deploy')
+  .action((version, opts) => deployCommand(version, { commit: opts.commit }));
 
 program
   .command('status')

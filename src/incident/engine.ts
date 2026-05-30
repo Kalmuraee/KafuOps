@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import { KafuOpsConfig, TriggerRule } from '../config/schema.js';
 import { Incident, RuntimeEvent, Severity } from '../types/index.js';
 import { IncidentStore } from './store.js';
+import { recentDeploy } from './deploys.js';
 import { log } from '../util/logger.js';
 
 interface RecentEvent {
@@ -78,6 +79,12 @@ export class IncidentEngine {
       return existing;
     }
 
+    // Recurrence: did we already fix (merge/resolve) this exact failure before?
+    // If so, the prior fix likely regressed or was incomplete — flag it.
+    const recurrenceOf = this.store
+      .list()
+      .find((i) => i.fingerprint === fp && (i.status === 'merged' || i.status === 'resolved'))?.id;
+
     const id = `inc_${new Date().toISOString().slice(0, 10).replace(/-/g, '_')}_${nanoid(8)}`;
     const incident: Incident = {
       id,
@@ -96,6 +103,7 @@ export class IncidentEngine {
       top_frame_line: event.attributes?.top_frame_line as number | undefined,
       trigger_reason: triggerReason,
       events: [event],
+      ...(recurrenceOf ? { recurrence_of: recurrenceOf } : {}),
     };
     this.store.save(incident);
     this.recordIncident(event.service);
@@ -168,9 +176,13 @@ export class IncidentEngine {
           rule.severities.includes(event.severity as 'critical' | 'high' | 'warn' | 'info')
           ? `alert_webhook severity=${event.severity}`
           : null;
-      case 'deployment_regression':
-        // Out of scope for MVP — would require deploy event correlation.
-        return null;
+      case 'deployment_regression': {
+        // Fire when an error-level event arrives shortly after a recorded deploy
+        // (`kafuops deploy <version>`), correlating the failure to that release.
+        if (event.severity === 'info' || event.severity === 'debug') return null;
+        const dep = recentDeploy(this.rootDir, rule.error_started_within_minutes);
+        return dep ? `deployment_regression after ${dep.version}` : null;
+      }
     }
   }
 
