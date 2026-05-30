@@ -218,6 +218,26 @@
   </div>
 </header>
 
+<section style="background: white; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+  <div class="container">
+    <h2>See it fix a real bug</h2>
+    <p class="lead">
+      A planted bug in a tiny checkout service. KafuOps diagnoses it, writes the patch,
+      <strong>self-corrects when the first attempt fails</strong>, validates the fix in a sandbox,
+      and opens a reviewable MR — driven here by the local <strong>Claude CLI</strong> (no API key).
+    </p>
+    <img src="assets/demo/recording.svg" alt="KafuOps fixing a bug end to end"
+         style="width:100%;max-width:820px;display:block;margin:1.25rem auto;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.12);"/>
+    <p style="text-align:center;color:#57606a;font-size:.9rem;margin-top:-.25rem;">
+      Real run on <code>examples/demo-discount</code> · reproduce with <code>scripts/demo.sh</code>
+    </p>
+    <div class="twocol" style="margin-top:1rem;">
+      <div class="col"><img src="assets/demo/02-diff.svg" alt="the generated fix" style="width:100%;border-radius:10px;"/></div>
+      <div class="col"><img src="assets/demo/03-mr.svg" alt="the generated merge request" style="width:100%;border-radius:10px;"/></div>
+    </div>
+  </div>
+</section>
+
 <section>
   <div class="container">
     <h2>The product rule</h2>
