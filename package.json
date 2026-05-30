@@ -1,8 +1,10 @@
 {
   "name": "kafuops",
   "version": "0.3.1",
-  "description": "Open-source production-debugging agent that turns backend incidents into evidence-backed merge requests.",
+  "description": "Open-source, self-hostable AI production-debugging agent for backend teams — turns incidents into sandbox-validated, evidence-backed merge requests. Bring your own LLM (OpenAI/Anthropic/local).",
   "license": "AGPL-3.0-only",
+  "author": "Khalid (https://github.com/Kalmuraee)",
+  "funding": "https://github.com/Kalmuraee/KafuOps",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -61,15 +63,29 @@
     "vitest": "^2.1.8"
   },
   "keywords": [
-    "observability",
-    "debugging",
-    "ai-agent",
-    "production",
+    "ai",
     "sre",
+    "ai-sre",
+    "aiops",
+    "debugging",
+    "debugging-agent",
     "incident-response",
-    "merge-request",
+    "incident-management",
+    "root-cause-analysis",
+    "observability",
+    "devops",
+    "on-call",
+    "production",
+    "self-hosted",
+    "llm",
     "openai",
     "anthropic",
-    "claude"
+    "claude",
+    "pull-request",
+    "merge-request",
+    "automation",
+    "cli",
+    "typescript",
+    "ai-agent"
   ]
 }
