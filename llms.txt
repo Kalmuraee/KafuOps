@@ -1,0 +1,17 @@
+# KafuOps
+
+> Open-source, self-hostable AI production-debugging agent (TypeScript/Node.js CLI) that turns backend incidents into sandbox-validated, evidence-backed merge requests. Bring your own LLM; no continuous logs are streamed to the model.
+
+KafuOps takes a signal/incident, builds grounded context (redaction + a grounding manifest), runs a 4-stage LLM pipeline (OpenAI, Anthropic, or a local Codex/Claude CLI), produces a sandbox-validated patch via a self-correcting loop, and opens a reviewable PR/MR with confidence scoring. A human reviews and merges — the agent never deploys to production on its own. Audience: SREs, backend/platform engineers, on-call, DevOps. License: AGPL-3.0-only. Install: `npm install -g kafuops` (Node.js >= 20).
+
+## Docs
+- [Landing page](https://kalmuraee.github.io/KafuOps/): what it is, the product rule, key features, quick start, and a sample generated MR
+- [README](https://raw.githubusercontent.com/Kalmuraee/KafuOps/main/README.md): full setup, configuration, and usage
+- [npm package](https://www.npmjs.com/package/kafuops): install and version info
+
+## Source
+- [GitHub repository](https://github.com/Kalmuraee/KafuOps): source, issues, releases
+- [Releases / changelog](https://github.com/Kalmuraee/KafuOps/releases): version history
+
+## Optional
+- [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.html): licensing terms

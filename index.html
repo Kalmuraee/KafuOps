@@ -2,18 +2,167 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>KafuOps — production debugging in evidence-backed merge requests</title>
-  <meta name="description" content="Open-source production-debugging agent. Turns backend incidents into reviewable merge requests with grounded context, redaction, sandbox-validated patches, and confidence scoring. Self-hostable.">
-  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KafuOps — Open-Source AI Production Debugging Agent</title>
+  <meta name="description" content="Open-source, self-hostable AI agent that turns backend incidents into sandbox-validated, evidence-backed merge requests. Bring your own LLM. AGPL-3.0.">
+  <meta name="keywords" content="AI production debugging agent, AI SRE agent, incident to pull request, self-hosted AI debugging, open source AI SRE, automated root cause analysis, observability, on-call, OpenAI, Anthropic">
+  <meta name="author" content="Khalid">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0F766E" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+  <link rel="canonical" href="https://kalmuraee.github.io/KafuOps/">
 
-  <meta property="og:title" content="KafuOps — production debugging in evidence-backed merge requests">
-  <meta property="og:description" content="Open-source. Self-hostable. No continuous logs to the model. Incident → grounded context → sandbox patch → reviewable MR.">
+  <!-- Open Graph -->
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="KafuOps">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="KafuOps — Open-Source AI Production Debugging Agent">
+  <meta property="og:description" content="Open-source, self-hostable AI agent that turns backend incidents into sandbox-validated, evidence-backed merge requests. Bring your own LLM.">
   <meta property="og:url" content="https://kalmuraee.github.io/KafuOps/">
-  <meta property="og:image" content="https://kalmuraee.github.io/KafuOps/assets/og-card.svg">
+  <meta property="og:image" content="https://kalmuraee.github.io/KafuOps/assets/og-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="KafuOps: backend incident in, evidence-backed merge request out.">
+
+  <!-- Twitter / X Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://kalmuraee.github.io/KafuOps/assets/og-card.svg">
+  <meta name="twitter:title" content="KafuOps — Open-Source AI Production Debugging Agent">
+  <meta name="twitter:description" content="Open-source, self-hostable AI agent that turns backend incidents into sandbox-validated, evidence-backed merge requests. Bring your own LLM.">
+  <meta name="twitter:image" content="https://kalmuraee.github.io/KafuOps/assets/og-card.png">
+  <meta name="twitter:image:alt" content="KafuOps: backend incident in, evidence-backed merge request out.">
+
+  <!-- Icons -->
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="alternate icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+
+  <!-- Structured data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "@id": "https://kalmuraee.github.io/KafuOps/#software",
+    "name": "KafuOps",
+    "alternateName": "kafuops",
+    "applicationCategory": "DeveloperApplication",
+    "applicationSubCategory": "CLI",
+    "operatingSystem": "Linux, macOS, Windows (Node.js >= 20)",
+    "softwareVersion": "0.3.1",
+    "description": "Open-source, self-hostable AI production-debugging agent that turns backend incidents into sandbox-validated, evidence-backed merge requests with confidence scoring. Signal/incident to grounded context (redaction + grounding manifest) to a 4-stage LLM pipeline (OpenAI, Anthropic, or a local Codex/Claude CLI) to a sandbox-validated patch and a reviewable PR/MR. No continuous logs are streamed to the model.",
+    "url": "https://kalmuraee.github.io/KafuOps/",
+    "downloadUrl": "https://www.npmjs.com/package/kafuops",
+    "installUrl": "https://www.npmjs.com/package/kafuops",
+    "softwareHelp": "https://github.com/Kalmuraee/KafuOps#readme",
+    "codeRepository": "https://github.com/Kalmuraee/KafuOps",
+    "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+    "programmingLanguage": "TypeScript",
+    "runtimePlatform": "Node.js >= 20",
+    "isAccessibleForFree": true,
+    "keywords": "AI production debugging, AI SRE agent, incident response, AIOps, automated pull request, root cause analysis, on-call, observability, self-hosted, LLM agent",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Organization",
+      "@id": "https://kalmuraee.github.io/KafuOps/#org",
+      "name": "KafuOps",
+      "url": "https://github.com/Kalmuraee/KafuOps"
+    },
+    "publisher": { "@id": "https://kalmuraee.github.io/KafuOps/#org" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://kalmuraee.github.io/KafuOps/#org",
+        "name": "KafuOps",
+        "url": "https://kalmuraee.github.io/KafuOps/",
+        "logo": "https://kalmuraee.github.io/KafuOps/assets/logo-512.png",
+        "founder": {
+          "@type": "Person",
+          "name": "Khalid",
+          "url": "https://github.com/Kalmuraee"
+        },
+        "sameAs": [
+          "https://github.com/Kalmuraee/KafuOps",
+          "https://www.npmjs.com/package/kafuops"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://kalmuraee.github.io/KafuOps/#website",
+        "url": "https://kalmuraee.github.io/KafuOps/",
+        "name": "KafuOps",
+        "description": "Open-source, self-hostable AI production-debugging agent for backend incidents.",
+        "inLanguage": "en",
+        "publisher": { "@id": "https://kalmuraee.github.io/KafuOps/#org" }
+      }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "@id": "https://kalmuraee.github.io/KafuOps/#faq",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What does KafuOps do?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "KafuOps is an open-source AI production-debugging agent. It takes a backend incident or signal, builds grounded and redacted context, runs a 4-stage LLM pipeline, and opens a sandbox-validated, evidence-backed merge request with a confidence score for a human to review."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is KafuOps open source and self-hostable?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. KafuOps is licensed under AGPL-3.0-only and is fully self-hostable. You run it yourself and connect your own LLM provider — OpenAI, Anthropic, or a local Codex/Claude CLI."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How is KafuOps different from Sentry Seer or Datadog Bits AI Dev?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Those are closed, SaaS-hosted, and tied to their own telemetry. KafuOps is open-source and self-hostable, is not locked to a single observability vendor, lets you bring your own LLM, and does not stream continuous logs to the model — it grounds context with redaction and a grounding manifest before generating a patch."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does KafuOps send my production logs to an AI model?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No continuous logs are streamed to the model. KafuOps grounds each incident with redaction and a grounding manifest, then passes only that scoped context to the LLM, so you keep control of what leaves your environment."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Will KafuOps merge code automatically?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. KafuOps validates each candidate fix in a sandbox with a self-correcting loop, then opens a reviewable pull/merge request with evidence and a confidence score. A human reviews and merges — the agent never deploys to production on its own."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I install KafuOps and what does it need?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Install the CLI with npm install -g kafuops (Node.js >= 20, ESM/TypeScript). Then run the setup wizard to validate your LLM key and connect your repo. Full docs are at https://kalmuraee.github.io/KafuOps/."
+        }
+      }
+    ]
+  }
+  </script>
 
   <style>
     :root {
