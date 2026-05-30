@@ -125,7 +125,9 @@ export const ConfigSchema = z.object({
 
   llm: z
     .object({
-      provider: z.enum(['openai', 'azure-openai', 'anthropic', 'none']).default('openai'),
+      // openai/azure-openai/anthropic call the provider API directly; codex and
+      // claude-cli drive a locally-installed CLI instead (no API key needed).
+      provider: z.enum(['openai', 'azure-openai', 'anthropic', 'codex', 'claude-cli', 'none']).default('openai'),
       trigger_mode: z.enum(['incident_only', 'manual_only', 'off']).default('incident_only'),
       models: z
         .object({
