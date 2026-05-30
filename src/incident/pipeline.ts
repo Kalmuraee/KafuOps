@@ -39,6 +39,8 @@ export interface PipelineResult {
   mrUrl?: string;
   confidence?: number;
   riskLevel?: string;
+  /** How many patch attempts were made (1 = no retry). */
+  attempts?: number;
 }
 
 /**
@@ -79,12 +81,32 @@ export async function processIncidentToMr(
     return { incidentId: id, status: 'blocked', reason: 'policy_deny_pre_apply' };
   }
 
-  const patch = await orch.codePatch(inc, built.bundle, plan);
+  let patch = await orch.codePatch(inc, built.bundle, plan);
+  const sandbox = new PatchSandbox({ rootDir, config, inPlace: !!options.inPlace });
+
+  // Agentic self-correction: apply → validate → if it didn't apply or tests
+  // failed, feed the failure back to the model to revise, and retry. Bounded by
+  // llm.max_fix_attempts. The sandbox is reset to its clean snapshot each round.
+  const maxAttempts = Math.max(1, config.llm.max_fix_attempts);
+  let sb = await sandbox.runPatch(inc, patch);
+  let attempts = 1;
+  const failed = (): boolean =>
+    !sb.patchApplied || (sb.validation.test_commands.length > 0 && !sb.validation.tests_passed);
+  while (failed() && attempts < maxAttempts) {
+    const failure = !sb.patchApplied
+      ? `git apply failed for the previous diff (reason=${sb.reason ?? 'unknown'})`
+      : sb.validation.tests_output_tail || 'tests failed';
+    const revised = await orch.revisePatch(inc, built.bundle, plan, patch, failure);
+    if (!revised.unified_diff || !revised.unified_diff.trim()) break; // model gave up
+    patch = revised;
+    await sandbox.revertAll(sb.workdir);
+    sb = await sandbox.runPatch(inc, patch);
+    attempts += 1;
+    log.info(`fix attempt ${attempts}/${maxAttempts}: applied=${sb.patchApplied} tests_passed=${sb.validation.tests_passed}`);
+  }
+
   store.writeArtifact(inc.id, 'patch.diff', patch.unified_diff || '');
   store.writeArtifact(inc.id, 'patch.json', JSON.stringify(patch, null, 2));
-
-  const sandbox = new PatchSandbox({ rootDir, config, inPlace: !!options.inPlace });
-  const sb = await sandbox.runPatch(inc, patch);
   store.writeArtifact(inc.id, 'validation.json', JSON.stringify(sb.validation, null, 2));
 
   let requiresApproval = false;
@@ -99,7 +121,7 @@ export async function processIncidentToMr(
         'policy-block.md',
         `Blocked AFTER patch applied (files outside plan match never_modify):\n${post.reasons.join('\n')}`,
       );
-      return { incidentId: id, status: 'blocked', reason: 'policy_deny_post_apply' };
+      return { incidentId: id, status: 'blocked', reason: 'policy_deny_post_apply', attempts };
     }
     if (post.outcome === 'require_approval') requiresApproval = true;
   }
@@ -125,13 +147,13 @@ export async function processIncidentToMr(
   if (confidence.decision === 'block') {
     inc.status = 'blocked';
     store.save(inc);
-    return { incidentId: id, status: 'blocked', reason: 'low_confidence', confidence: confidence.score };
+    return { incidentId: id, status: 'blocked', reason: 'low_confidence', confidence: confidence.score, attempts };
   }
   if (confidence.decision === 'request_human_approval') requiresApproval = true;
   if (config.policies.blast_radius.block_high_risk_auto_mr && blast.risk_level === 'critical') {
     inc.status = 'blocked';
     store.save(inc);
-    return { incidentId: id, status: 'blocked', reason: 'critical_blast_radius', confidence: confidence.score };
+    return { incidentId: id, status: 'blocked', reason: 'critical_blast_radius', confidence: confidence.score, attempts };
   }
 
   const explanation = await orch.mrExplanation(inc, built.bundle, plan);
@@ -168,6 +190,7 @@ export async function processIncidentToMr(
       reason: decision.reasons.join('; '),
       confidence: confidence.score,
       riskLevel: blast.risk_level,
+      attempts,
     };
   }
 
@@ -184,7 +207,7 @@ export async function processIncidentToMr(
   if (result.dry_run) {
     inc.status = 'validated';
     store.save(inc);
-    return { incidentId: id, status: 'mr_saved', reason: 'provider dry-run (no token/url)', confidence: confidence.score };
+    return { incidentId: id, status: 'mr_saved', reason: 'provider dry-run (no token/url)', confidence: confidence.score, attempts };
   }
 
   inc.status = 'mr_opened';
@@ -201,5 +224,5 @@ export async function processIncidentToMr(
       log.warn(`auto-merge failed (MR left open for review): ${(err as Error).message}`);
     }
   }
-  return { incidentId: id, status, mrUrl: result.url, confidence: confidence.score, riskLevel: blast.risk_level };
+  return { incidentId: id, status, mrUrl: result.url, confidence: confidence.score, riskLevel: blast.risk_level, attempts };
 }

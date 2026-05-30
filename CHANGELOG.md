@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — quality (in progress)
+
+### Fix quality & autonomy
+
+- **Agentic self-correcting fix loop**: the pipeline now applies a patch, runs
+  the sandbox tests, and — if it doesn't apply or tests fail — feeds the failure
+  back to the model to revise and retries (bounded by `llm.max_fix_attempts`,
+  default 2). `PipelineResult.attempts` is reported.
+- **`kafuops eval`** + `src/eval/harness.ts`: a seeded fix-quality suite (wrong
+  operator, off-by-one, missing null guard) that measures real **fix-success
+  rate**, average attempts, and confidence calibration against the configured
+  provider — the missing way to know whether fixes actually work.
+- Fixed a latent ESM bug (`require` in `sandbox/runner.ts`) that broke real
+  copy-mode sandboxing outside the test runner.
+
 ## 0.2.0 — close the loop
 
 ### Onboarding (follow-up)

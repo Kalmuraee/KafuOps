@@ -168,7 +168,8 @@ export class PatchSandbox {
     if (!fs.existsSync(target)) {
       ensureDir(target);
       // Use rsync via argv (no shell interpolation, so the repo path can contain anything).
-      const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+      // NB: must use the top-level `import { spawnSync }` — `require` is undefined
+      // in this ESM package and only worked under the test runner's polyfill.
       const rsync = spawnSync(
         'rsync',
         [
