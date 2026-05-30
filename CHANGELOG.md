@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 — fix update check
+
+- **Fix: the update check never worked against the real npm registry.** The
+  request to `/<pkg>/latest` sent `Accept: application/vnd.npm.install-v1+json`,
+  which the registry rejects with **406 Not Acceptable** on that endpoint (the
+  abbreviated-metadata type is only valid on the packument root). The checker
+  treated the 406 as "unreachable" and always reported no update. Now it uses a
+  plain `application/json` Accept and resolves `latest` correctly. Caught right
+  after the first publish, when a live registry finally existed to hit.
+
 ## 0.3.0 — quality
 
 ### Update mechanism

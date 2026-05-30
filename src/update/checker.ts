@@ -56,9 +56,13 @@ export async function fetchLatestVersion(pkg: string, opts: FetchOpts = {}): Pro
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 3000);
   try {
+    // NB: do NOT send `application/vnd.npm.install-v1+json` here — the registry
+    // returns 406 for that abbreviated-metadata type on the /<pkg>/latest
+    // endpoint (it's only valid on the packument root). Default Accept returns
+    // the full version document, which carries `.version`.
     const res = await f(`https://registry.npmjs.org/${pkg}/latest`, {
       signal: controller.signal,
-      headers: { accept: 'application/vnd.npm.install-v1+json' },
+      headers: { accept: 'application/json' },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { version?: string };

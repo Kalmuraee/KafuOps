@@ -60,6 +60,23 @@ describe('fetchLatestVersion', () => {
     const fetchImpl = (async () => { throw new Error('offline'); }) as unknown as typeof fetch;
     expect(await fetchLatestVersion('kafuops', { fetchImpl })).toBeNull();
   });
+  it('does not send the abbreviated-metadata Accept header (the real /latest endpoint 406s on it)', async () => {
+    // The live registry returns 406 Not Acceptable when `application/vnd.npm.install-v1+json`
+    // is sent to /<pkg>/latest, so the previous header made every real check fail.
+    let sentBadAccept = false;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      const h = new Headers(init?.headers);
+      const accept = h.get('accept') ?? '';
+      if (accept.includes('vnd.npm.install')) {
+        sentBadAccept = true;
+        return new Response('Not Acceptable', { status: 406 });
+      }
+      return jsonResp({ version: '0.3.0' });
+    }) as unknown as typeof fetch;
+    const v = await fetchLatestVersion('kafuops', { fetchImpl });
+    expect(sentBadAccept).toBe(false);
+    expect(v).toBe('0.3.0');
+  });
 });
 
 describe('checkForUpdate', () => {
