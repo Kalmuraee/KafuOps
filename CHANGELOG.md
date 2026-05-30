@@ -2,6 +2,15 @@
 
 ## 0.3.0 — quality
 
+### Update mechanism
+
+- **`kafuops update`** checks the npm registry and installs the latest
+  (`--print` to only show the command; `--pm` for pnpm/yarn/bun).
+- **Background update notice**: a throttled (once/day), per-user-cached,
+  non-blocking check prints a small "Update available" box after a command when
+  a newer version exists. Opt out with `KAFUOPS_NO_UPDATE_CHECK=1` (also off in
+  CI / non-interactive shells). `--version` now reads the real package version.
+
 ### DX, TUI & "make it ready"
 
 - **Easy setup**: `.kafuops/.env` is auto-loaded at startup (no manual `export`),

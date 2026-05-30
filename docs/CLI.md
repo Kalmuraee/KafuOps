@@ -87,6 +87,20 @@ kafuops incidents mark-rejected inc_123 --note "masked the real bug"
 `mark-merged` / `mark-rejected` record the reviewer's decision in
 `.kafuops/memory/review-feedback.md`, which is fed back into future analyses.
 
+## Update
+
+```bash
+kafuops update            # check the npm registry and install the latest
+kafuops update --print    # just show the install command, don't run it
+kafuops update --pm pnpm  # use pnpm/yarn/bun instead of npm
+```
+
+KafuOps also checks for a new version in the background (at most once a day) and,
+if one exists, prints a small "Update available" notice after a command. The
+check is non-blocking, cached per-user in `~/.kafuops/update-check.json`, and
+silently skipped on failure. Disable it with `KAFUOPS_NO_UPDATE_CHECK=1` (it's
+also off in CI and non-interactive shells).
+
 ## Deploy markers
 
 ```bash

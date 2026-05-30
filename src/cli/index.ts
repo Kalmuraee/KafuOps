@@ -27,6 +27,8 @@ import { evalCommand } from './commands/eval.js';
 import { statusCommand, watchCommand } from './commands/status.js';
 import { deployCommand } from './commands/deploy.js';
 import { quickstartCommand } from './commands/quickstart.js';
+import { updateCommand, refreshUpdateCache, bootstrapUpdateChecks } from './commands/update.js';
+import { getPackageVersion } from '../update/checker.js';
 
 // Auto-load .kafuops/.env (or $KAFUOPS_ENV_FILE) so the key stored by
 // `kafuops init` works without a manual `export`. Real env always wins.
@@ -36,12 +38,19 @@ try {
   /* ignore — never block startup on env loading */
 }
 
+// Non-blocking "new version available" notice + background cache refresh.
+try {
+  bootstrapUpdateChecks();
+} catch {
+  /* ignore */
+}
+
 const program = new Command();
 
 program
   .name('kafuops')
   .description('Open-source production-debugging agent.')
-  .version('0.3.0')
+  .version(getPackageVersion())
   .option('--debug', 'verbose logging')
   .hook('preAction', (cmd) => {
     if (cmd.opts().debug) setLogLevel('debug');
@@ -52,6 +61,20 @@ program
   .description('Zero-to-ready: set up, load your key, and build project memory in one command.')
   .option('-y, --yes', 'accept discovered defaults without prompting')
   .action((opts) => quickstartCommand({ yes: !!opts.yes }));
+
+program
+  .command('update')
+  .description('Check for a newer KafuOps version and install it.')
+  .option('--print', 'only print the update command, do not run it')
+  .option('--pm <manager>', 'package manager: npm | pnpm | yarn | bun')
+  .action((opts) => updateCommand({ print: !!opts.print, pm: opts.pm }));
+
+// Hidden: refresh the update-check cache in the background, then exit.
+program
+  .command('__check-update', { hidden: true })
+  .action(async () => {
+    await refreshUpdateCache();
+  });
 
 program
   .command('init')
