@@ -2,6 +2,7 @@ import { loadConfigOrExit } from '../util.js';
 import { initCommand } from './init.js';
 import { scanCommand } from './scan.js';
 import { loadEnvFile } from '../../util/dotenv.js';
+import { printBox } from '../../util/ui.js';
 import { log } from '../../util/logger.js';
 
 /**
@@ -24,10 +25,9 @@ export async function quickstartCommand(opts: { yes?: boolean; cwd?: string } = 
 
   const { config } = loadConfigOrExit({ cwd, allowMissing: true });
   log.info('');
-  log.ok('Ready.');
-  if (config.runtime.mode === 'wrapper') {
-    log.info('  Next: kafuops doctor   then   kafuops run -- <your start command>');
-  } else {
-    log.info('  Next: kafuops doctor   then   kafuops agent start  +  kafuops worker start');
-  }
+  const next =
+    config.runtime.mode === 'wrapper'
+      ? ['kafuops doctor', 'kafuops run -- <your start command>']
+      : ['kafuops doctor', 'kafuops agent start', 'kafuops worker start'];
+  printBox('✓ Ready', ['Run next:', ...next.map((n) => `  ${n}`)]);
 }
