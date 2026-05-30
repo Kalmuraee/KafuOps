@@ -40,7 +40,7 @@ export function renderStatusLines(summary: StatusSummary, meta: StatusMeta): str
   if (summary.recent.length) {
     lines.push('Recent:');
     for (const r of summary.recent) {
-      lines.push(`  ${r.id}  ${r.status.padEnd(13)} ${r.severity.padEnd(8)} ${r.summary.slice(0, 60)}`);
+      lines.push(`  ${r.id}  ${r.status.padEnd(11)} ${r.severity.padEnd(6)} ${r.summary.slice(0, 40)}`);
     }
   } else {
     lines.push('No incidents yet.');

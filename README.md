@@ -32,8 +32,8 @@ KafuOps is designed around one important rule:
 A planted bug in a tiny checkout service — KafuOps diagnoses it, writes the patch, **self-corrects when the first attempt fails**, validates the fix in a sandbox, and opens a reviewable MR. This run is driven by the locally-installed **Claude CLI** (no API key).
 
 <p align="center">
-  <a href="https://kalmuraee.github.io/KafuOps/"><img src="assets/demo/recording.svg" alt="KafuOps fixing a bug end to end" width="760"></a><br>
-  <em>▶ <a href="https://kalmuraee.github.io/KafuOps/">Watch the animated demo on the site</a> · reproduce locally with <code>scripts/demo.sh</code></em>
+  <a href="https://kalmuraee.github.io/KafuOps/#demo"><img src="assets/demo/kafuops.gif" alt="KafuOps fixing a bug end to end" width="820"></a><br>
+  <em>Unedited recording · <a href="https://kalmuraee.github.io/KafuOps/">watch on the site</a> · reproduce locally with <code>scripts/demo.sh</code></em>
 </p>
 
 The fix KafuOps generated, after the sandbox test went green:
