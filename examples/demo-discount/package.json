@@ -1,0 +1,8 @@
+{
+  "name": "checkout-svc",
+  "version": "1.0.0",
+  "description": "Tiny demo service with a planted bug, used to show KafuOps fixing a real incident.",
+  "scripts": {
+    "test": "node test.js"
+  }
+}

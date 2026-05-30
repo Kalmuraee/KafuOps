@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="276" viewBox="0 0 820 276" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14">
+  <rect x="0.5" y="0.5" width="819" height="275" rx="12" fill="#0d1117" stroke="#21262d"/>
+  <rect x="0.5" y="0.5" width="819" height="34" rx="12" fill="#161b22"/>
+  <rect x="0.5" y="22" width="819" height="12" fill="#161b22"/>
+  <circle cx="20" cy="17" r="6" fill="#f85149"/><circle cx="40" cy="17" r="6" fill="#d29922"/><circle cx="60" cy="17" r="6" fill="#3fb950"/>
+  <text x="410" y="22" fill="#7d8590" text-anchor="middle" font-size="12">the merge request</text>
+  <text x="22" y="56" fill="#2dd4bf" font-weight="600" xml:space="preserve"># KafuOps Incident Fix</text>
+  <text x="22" y="78" fill="#cdd6e4" xml:space="preserve">Files changed:  src/discount.js</text>
+  <text x="22" y="100" fill="#3fb950" xml:space="preserve">Validation:     node test.js  →  tests passed: yes</text>
+  <text x="22" y="122" fill="#cdd6e4" xml:space="preserve">Confidence:     80 / 100 (high)</text>
+  <text x="22" y="144" fill="#3fb950" xml:space="preserve">  + stack_trace_maps_to_changed_file</text>
+  <text x="22" y="166" fill="#3fb950" xml:space="preserve">  + targeted_tests_passed</text>
+  <text x="22" y="188" fill="#3fb950" xml:space="preserve">  + patch_is_small</text>
+  <text x="22" y="210" fill="#cdd6e4" xml:space="preserve">Blast radius:   low</text>
+  <text x="22" y="232" fill="#7d8590" xml:space="preserve">Labels:         kafuops · incident-fix · needs-review · confidence-high</text>
+</svg>
