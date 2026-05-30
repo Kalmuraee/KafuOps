@@ -36,6 +36,7 @@ export function buildMrPayload(branch: string, base: string, inputs: MrBodyInput
     'needs-review',
     `confidence-${inputs.confidence.level.replace('_', '-')}`,
     `risk-${inputs.blast_radius.risk_level}`,
+    ...(inputs.incident.recurrence_of ? ['recurrence'] : []),
   ];
   return { title, body: renderBody(inputs), branch, base, labels };
 }
@@ -53,6 +54,11 @@ function renderBody(input: MrBodyInputs): string {
   lines.push(`- Event count: ${input.incident.event_count}`);
   lines.push(`- Severity: ${input.incident.severity}`);
   if (input.incident.fingerprint) lines.push(`- Fingerprint: \`${input.incident.fingerprint}\``);
+  if (input.incident.recurrence_of) {
+    lines.push(
+      `- ⚠ **Recurrence** of \`${input.incident.recurrence_of}\` — a previously merged/resolved fix for this failure regressed or was incomplete. Review carefully.`,
+    );
+  }
   lines.push('', `## Root cause`, '');
   lines.push(input.plan.reason);
   lines.push('', `## Evidence`, '');

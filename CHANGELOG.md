@@ -2,6 +2,15 @@
 
 ## 0.3.0 — quality
 
+### Deploy awareness & recurrence
+
+- **`kafuops deploy <version>`** records a deploy marker; the previously no-op
+  **`deployment_regression`** trigger now fires when an error follows a recent
+  deploy, correlating the failure to that release.
+- **Recurrence detection**: a new incident whose fingerprint matches a previously
+  merged/resolved one is flagged `recurrence_of` (the prior fix regressed or was
+  incomplete) — surfaced as a ⚠ note + `recurrence` label on the MR.
+
 ### Performance & security
 
 - **Patch path-traversal guard**: a model-generated diff whose paths escape the

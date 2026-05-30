@@ -59,6 +59,8 @@ export interface Incident {
   trigger_reason?: string;
   events: RuntimeEvent[];
   deployment?: { version?: string; commit_sha?: string };
+  /** Set when this incident recurs a previously merged/resolved incident (same fingerprint). */
+  recurrence_of?: string;
 }
 
 export interface LogExcerpt {
