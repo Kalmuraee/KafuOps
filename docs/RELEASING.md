@@ -1,16 +1,22 @@
 # Releasing KafuOps to npm
 
-The package name is `kafuops` (currently unpublished — the in-app update check
-404s until the first publish lands).
+The package is published as [`kafuops`](https://www.npmjs.com/package/kafuops).
 
-## One-time setup
+## One-time setup — Trusted Publishing (OIDC, no token)
 
-Add an npm **automation token** as a repository secret so CI can publish:
+Releases publish via npm **Trusted Publishing**: GitHub Actions authenticates to
+npm over OIDC, so there is **no `NPM_TOKEN` secret** to manage and it satisfies
+the package's "require two-factor authentication" policy (which rejects
+automation tokens).
 
-1. npm → Account → Access Tokens → **Generate** → *Automation* (or a granular
-   token scoped to publish `kafuops`).
-2. GitHub → repo → Settings → Secrets and variables → Actions →
-   **New repository secret** → name `NPM_TOKEN`, value = the token.
+Configure it once on npmjs.com (log in with your passkey):
+
+1. npmjs.com → package **`kafuops`** → **Settings** → **Trusted Publisher**.
+2. Provider **GitHub Actions**, Organization/repo **`Kalmuraee/KafuOps`**,
+   Workflow filename **`release.yml`** (leave environment blank). Save.
+
+The workflow already requests `id-token: write` and upgrades npm to a version
+that supports OIDC (>= 11.5.1).
 
 ## Cutting a release (CI — recommended)
 
@@ -28,9 +34,9 @@ tests, verifies the tag matches `package.json`, runs
 npm package to the exact GitHub commit + build), and creates a matching
 **GitHub Release** with auto-generated notes.
 
-> The `NPM_TOKEN` must be an **Automation** token (classic Automation or a
-> granular token). A classic *Publish* token still requires an OTP and will fail
-> in CI with `EOTP`.
+> No token is used. If you ever see `403 ... an automation token was specified`,
+> the Trusted Publisher above isn't configured (or the workflow filename doesn't
+> match) — fix the npmjs.com setting; don't add a token.
 
 ## Publishing manually (no CI)
 
