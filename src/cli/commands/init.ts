@@ -7,6 +7,7 @@ import { ensureDirs, getPaths } from '../../util/paths.js';
 import { runDiscovery, DiscoveryResult } from '../../wizard/discover.js';
 import { buildProviderChoices } from '../../wizard/providers.js';
 import { fetchModels, pickDefaults, CURATED, ModelProvider } from '../../llm/models.js';
+import { ensureGitignore } from '../../util/gitignore.js';
 import { log } from '../../util/logger.js';
 
 export interface InitOptions {
@@ -37,6 +38,7 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   const paths = getPaths(cwd);
   ensureDirs(paths);
   writeEnv(paths.base, cwd, built.secrets);
+  if (ensureGitignore(cwd)) log.ok('Updated .gitignore (KafuOps secrets/state won’t be committed)');
 
   log.ok(`Created ${configPath}`);
   log.info('');

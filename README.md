@@ -106,13 +106,16 @@ That mode captures stdout/stderr, process exits, stack traces, and runtime metad
 ## Quick start
 
 ```bash
-npm install -g kafuops
 cd your-backend-repo
-kafuops init
-kafuops doctor
-kafuops scan
-kafuops run -- npm start
+npx kafuops quickstart      # discover the stack, set up, build memory — one command
+kafuops run -- npm start    # wrap your app and watch for incidents
 ```
+
+`quickstart` auto-detects your framework, start command, git remote, and which AI
+is available (it'll use a local **Codex/Claude CLI** with no API key, or an
+OpenAI/Anthropic key). Your key is stored in `.kafuops/.env` (gitignored, mode
+0600) and **loaded automatically** — no manual `export` needed. Run `kafuops
+doctor` any time to check the setup.
 
 Or for production-style setup:
 
