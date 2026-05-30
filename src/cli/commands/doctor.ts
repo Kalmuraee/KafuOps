@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfigOrExit } from '../util.js';
 import { Redactor } from '../../redaction/index.js';
+import { detectAiTooling } from '../../wizard/discover.js';
 import { log } from '../../util/logger.js';
 import { run } from '../../util/shell.js';
 
@@ -48,9 +49,24 @@ export async function doctorCommand(): Promise<void> {
 
   // LLM — verify the key actually works against the provider. Just checking that
   // the env var is set used to mislead users into thinking dry-run mode was active.
+  const tooling = detectAiTooling();
+  log.info(
+    `AI tooling: codex CLI ${tooling.codexCli ? 'yes' : 'no'}, claude CLI ${tooling.claudeCli ? 'yes' : 'no'}, ` +
+      `OPENAI_API_KEY ${tooling.openaiKeyEnv ? 'set' : 'unset'}, ANTHROPIC_API_KEY ${tooling.anthropicKeyEnv ? 'set' : 'unset'}`,
+  );
+
   if (config.llm.provider === 'none') {
     log.warn('llm.provider=none; analysis will use offline heuristics');
     warnings++;
+  } else if (config.llm.provider === 'codex' || config.llm.provider === 'claude-cli') {
+    const want = config.llm.provider === 'codex' ? 'codex' : 'claude';
+    const installed = config.llm.provider === 'codex' ? tooling.codexCli : tooling.claudeCli;
+    if (installed) {
+      log.ok(`LLM: ${want} CLI detected on PATH`);
+    } else {
+      log.error(`LLM: provider=${config.llm.provider} but the \`${want}\` CLI was not found on PATH`);
+      errors++;
+    }
   } else if (config.llm.provider === 'anthropic') {
     if (!process.env.ANTHROPIC_API_KEY) {
       log.warn('ANTHROPIC_API_KEY not set; LLM calls will run in dry-run mode');

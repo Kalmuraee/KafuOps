@@ -14,6 +14,8 @@ KafuOps observes backend incidents, understands the repository, builds project m
 
 ## Core concepts
 
+- [AI providers (OpenAI / Anthropic / Codex / Claude CLI)](AI_PROVIDERS.md)
+- [Embedded Node SDK](NODE_SDK.md)
 - [Observability layer](OBSERVABILITY_LAYER.md)
 - [Error-triggered LLM workflow](ERROR_TRIGGERED_LLM.md)
 - [Project memory](PROJECT_MEMORY.md)
