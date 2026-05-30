@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { log, setLogLevel } from '../util/logger.js';
+import { resolveConfigPath } from '../config/loader.js';
+import { loadEnvFile } from '../util/dotenv.js';
 import { initCommand } from './commands/init.js';
 import { doctorCommand } from './commands/doctor.js';
 import { scanCommand } from './commands/scan.js';
@@ -24,6 +26,15 @@ import { agentStart, workerStart } from './commands/agent.js';
 import { evalCommand } from './commands/eval.js';
 import { statusCommand, watchCommand } from './commands/status.js';
 import { deployCommand } from './commands/deploy.js';
+import { quickstartCommand } from './commands/quickstart.js';
+
+// Auto-load .kafuops/.env (or $KAFUOPS_ENV_FILE) so the key stored by
+// `kafuops init` works without a manual `export`. Real env always wins.
+try {
+  loadEnvFile(resolveConfigPath().rootDir);
+} catch {
+  /* ignore — never block startup on env loading */
+}
 
 const program = new Command();
 
@@ -35,6 +46,12 @@ program
   .hook('preAction', (cmd) => {
     if (cmd.opts().debug) setLogLevel('debug');
   });
+
+program
+  .command('quickstart')
+  .description('Zero-to-ready: set up, load your key, and build project memory in one command.')
+  .option('-y, --yes', 'accept discovered defaults without prompting')
+  .action((opts) => quickstartCommand({ yes: !!opts.yes }));
 
 program
   .command('init')

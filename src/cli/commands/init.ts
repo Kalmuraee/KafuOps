@@ -7,6 +7,8 @@ import { ensureDirs, getPaths } from '../../util/paths.js';
 import { runDiscovery, DiscoveryResult } from '../../wizard/discover.js';
 import { buildProviderChoices } from '../../wizard/providers.js';
 import { fetchModels, pickDefaults, CURATED, ModelProvider } from '../../llm/models.js';
+import { ensureGitignore } from '../../util/gitignore.js';
+import { printBox, spinner } from '../../util/ui.js';
 import { log } from '../../util/logger.js';
 
 export interface InitOptions {
@@ -37,6 +39,7 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   const paths = getPaths(cwd);
   ensureDirs(paths);
   writeEnv(paths.base, cwd, built.secrets);
+  if (ensureGitignore(cwd)) log.ok('Updated .gitignore (KafuOps secrets/state won’t be committed)');
 
   log.ok(`Created ${configPath}`);
   log.info('');
@@ -46,24 +49,26 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
 // ---------- discovery presentation ----------
 
 function printFindings(d: DiscoveryResult): void {
-  log.info('Discovered:');
-  log.info(`  • Stack: ${d.framework.language} / ${d.framework.framework}`);
-  log.info(`  • Start command: ${d.startCommand ?? '(unknown — you can set it)'}`);
-  log.info(`  • Repository: ${d.repo.url ? `${d.repo.url} (${d.repo.provider})` : '(no git remote found)'}`);
   const signals = [
     d.containerization.dockerfile && 'Dockerfile',
     d.containerization.compose && 'docker-compose',
     d.containerization.kubernetes && 'kubernetes/helm',
   ].filter(Boolean);
-  log.info(`  • Packaging: ${signals.length ? signals.join(', ') : 'none detected'} → suggested mode: ${d.suggestedMode}`);
-  if (d.logFiles.length) log.info(`  • Log files: ${d.logFiles.join(', ')}`);
   const tools = [
     d.tooling.codexCli && 'codex CLI',
     d.tooling.claudeCli && 'claude CLI',
     d.tooling.openaiKeyEnv && 'OPENAI_API_KEY',
     d.tooling.anthropicKeyEnv && 'ANTHROPIC_API_KEY',
   ].filter(Boolean);
-  log.info(`  • AI available: ${tools.length ? tools.join(', ') : 'none detected'}`);
+  const lines = [
+    `Stack         ${d.framework.language} / ${d.framework.framework}`,
+    `Start command ${d.startCommand ?? '(unknown — you can set it)'}`,
+    `Repository    ${d.repo.url ? `${d.repo.url} (${d.repo.provider})` : '(no git remote found)'}`,
+    `Packaging     ${signals.length ? signals.join(', ') : 'none'} → mode: ${d.suggestedMode}`,
+  ];
+  if (d.logFiles.length) lines.push(`Log files     ${d.logFiles.join(', ')}`);
+  lines.push(`AI available  ${tools.length ? tools.join(', ') : 'none detected'}`);
+  printBox('Discovered your service', lines);
   log.info('');
 }
 
@@ -158,10 +163,10 @@ async function interactiveConfig(d: DiscoveryResult, cwd: string): Promise<Built
     }
     let models = CURATED[provider];
     if (key) {
-      log.info('Fetching the latest models for your account…');
+      const sp = spinner('Fetching the latest models for your account…');
       const res = await fetchModels(provider, key);
       models = res.models;
-      log.dim(`  ${res.source === 'live' ? `live: ${models.length} models` : 'offline — using a curated list'}`);
+      sp.succeed(res.source === 'live' ? `Found ${models.length} models for your account` : 'Offline — using a curated model list');
     } else {
       log.dim('  No key entered — choosing from a curated model list.');
     }
@@ -223,24 +228,22 @@ function writeEnv(baseDir: string, cwd: string, secrets: BuiltConfig['secrets'])
   if (!lines.length) return;
   const envPath = path.join(baseDir, '.env');
   fs.writeFileSync(envPath, lines.join('\n') + '\n', { mode: 0o600 });
-  log.ok(`Wrote ${envPath} (mode 0600). Source it before running:`);
-  log.dim(`  export $(grep -v '^#' ${path.relative(cwd, envPath)} | xargs)`);
+  log.ok(`Stored your key in ${path.relative(cwd, envPath)} (mode 0600, gitignored) — loaded automatically.`);
 }
 
 function printSummary(config: KafuOpsConfig, d: DiscoveryResult): void {
-  log.info('Configured:');
-  log.info(`  • Mode: ${config.runtime.mode} · Provider: ${config.llm.provider}`);
+  const lines = [`Mode      ${config.runtime.mode}`, `Provider  ${config.llm.provider}`];
   if (config.llm.provider !== 'none') {
-    log.info(`  • Models: analysis=${config.llm.models.analysis || '(cli default)'} patch=${config.llm.models.patch || '(cli default)'}`);
+    lines.push(`Models    analysis=${config.llm.models.analysis || '(cli default)'}  patch=${config.llm.models.patch || '(cli default)'}`);
   }
-  log.info('');
-  log.info('Next:');
-  log.info('  kafuops doctor');
-  log.info('  kafuops scan');
+  lines.push('');
+  lines.push('Next:');
+  lines.push('  kafuops doctor');
   if (config.runtime.mode === 'wrapper') {
-    log.info(`  kafuops run -- ${d.startCommand ?? '<your backend command>'}`);
+    lines.push(`  kafuops run -- ${d.startCommand ?? '<your backend command>'}`);
   } else {
-    log.info('  kafuops agent start    # webhook + log-tailing intake');
-    log.info('  kafuops worker start   # drive incidents → MRs');
+    lines.push('  kafuops agent start    # webhook + log-tailing intake');
+    lines.push('  kafuops worker start   # drive incidents → MRs');
   }
+  printBox('Ready to go', lines);
 }

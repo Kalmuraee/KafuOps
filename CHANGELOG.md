@@ -2,6 +2,18 @@
 
 ## 0.3.0 — quality
 
+### DX, TUI & "make it ready"
+
+- **Easy setup**: `.kafuops/.env` is auto-loaded at startup (no manual `export`),
+  `kafuops quickstart` does setup→key→memory in one command, and `init` adds
+  KafuOps state to the repo `.gitignore`.
+- **Nicer terminal**: boxed panels + spinners across the wizard, `status`/`watch`,
+  and `scan` (degrade cleanly in CI / `KAFUOPS_LOG_FORMAT=json`).
+- **STATUS.md is now all ✅**: aligned the lagging docs (DEPLOYMENT_KUBERNETES,
+  EXAMPLES, FAQ) with reality, added an adversarial prompt-injection **fuzz suite**,
+  and replaced the "gaps" section with an honest "deliberately deferred" list.
+  Marked Phase 4 (deploy-diff + recurrence) complete.
+
 ### Deploy awareness & recurrence
 
 - **`kafuops deploy <version>`** records a deploy marker; the previously no-op

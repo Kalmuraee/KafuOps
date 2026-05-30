@@ -1,6 +1,29 @@
 # Kubernetes Deployment
 
-KafuOps can be deployed in Kubernetes as sidecars, DaemonSets, and central workers.
+KafuOps ships **ready-to-apply manifests and a Helm chart** for the agent +
+worker. Use either:
+
+```bash
+# Raw manifests
+kubectl apply -f deploy/kubernetes/         # see deploy/kubernetes/README.md
+
+# Or Helm
+helm install kafuops deploy/helm/kafuops \
+  --set secrets.existingSecret=kafuops-secrets \
+  --set worker.repoCloneUrl=https://github.com/your-org/your-backend.git
+```
+
+Both deploy a `kafuops-agent` Deployment+Service (webhook + OTLP intake, with
+`/healthz` probes) and a `kafuops-worker` Deployment (clones the repo via an
+init-container, drives incidents → MRs). Config comes from a ConfigMap, secrets
+from a Secret, incident state from a PVC. The example configs are validated
+against the real Zod schema.
+
+> A first-class **operator / CRD** is on the roadmap — the manifests + chart
+> above already cover deployment; the operator would add reconcile-loop
+> management on top. Not required to run KafuOps in a cluster.
+
+## Reference architecture
 
 ## Recommended architecture
 
