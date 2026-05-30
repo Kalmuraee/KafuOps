@@ -136,6 +136,32 @@ kafuops worker start --config .kafuops.yml
 5. **Privacy by default** — redaction, file allowlists, audit logs, and local-first processing.
 6. **No auto-merge by default** — KafuOps opens reviewable MRs, not silent production changes.
 
+## FAQ
+
+### What does KafuOps do?
+
+KafuOps is an open-source AI production-debugging agent. It takes a backend incident or signal, builds grounded and redacted context, runs a 4-stage LLM pipeline, and opens a sandbox-validated, evidence-backed merge request with a confidence score for a human to review.
+
+### Is KafuOps open source and self-hostable?
+
+Yes. KafuOps is licensed under AGPL-3.0-only and is fully self-hostable. You run it yourself and connect your own LLM provider — OpenAI, Anthropic, or a local Codex/Claude CLI.
+
+### How is KafuOps different from Sentry Seer or Datadog Bits AI Dev?
+
+Those are closed, SaaS-hosted, and tied to their own telemetry. KafuOps is open-source and self-hostable, is not locked to a single observability vendor, lets you bring your own LLM, and does not stream continuous logs to the model — it grounds context with redaction and a grounding manifest before generating a patch.
+
+### Does KafuOps send my production logs to an AI model?
+
+No continuous logs are streamed to the model. KafuOps grounds each incident with redaction and a grounding manifest, then passes only that scoped context to the LLM, so you keep control of what leaves your environment.
+
+### Will KafuOps merge code automatically?
+
+No. KafuOps validates each candidate fix in a sandbox with a self-correcting loop, then opens a reviewable pull/merge request with evidence and a confidence score. A human reviews and merges — the agent never deploys to production on its own.
+
+### How do I install KafuOps and what does it need?
+
+Install the CLI with `npm install -g kafuops` (Node.js >= 20, ESM/TypeScript). Then run the setup wizard to validate your LLM key and connect your repo. Full docs are at https://kalmuraee.github.io/KafuOps/.
+
 ## Documentation
 
 Start here:
