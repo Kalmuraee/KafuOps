@@ -139,6 +139,11 @@ export const ConfigSchema = z.object({
       // Self-correcting fix loop: total patch attempts (1 = no retry). Each retry
       // feeds the sandbox test failure back to the model to revise the patch.
       max_fix_attempts: z.number().int().min(1).max(5).default(2),
+      // Transient-error retries (429/5xx/timeouts) per model call, with backoff.
+      max_retries: z.number().int().min(0).max(5).default(2),
+      // Anthropic prompt caching: marks the stable system prompt as cacheable
+      // (cuts cost/latency on repeated calls). No effect on other providers.
+      prompt_cache: z.boolean().default(true),
       max_context_files: z.number().int().positive().default(30),
       max_log_excerpt_chars: z.number().int().positive().default(12000),
       max_file_chars: z.number().int().positive().default(8000),
@@ -199,6 +204,8 @@ export const ConfigSchema = z.object({
       // daemon); 'local' runs in an rsync copy. See sandbox/runner.ts.
       type: z.enum(['local', 'docker']).default('local'),
       image: z.string().default('node:22'),
+      // 'none' runs the docker sandbox with no network (prevents exfiltration).
+      network: z.enum(['default', 'none']).default('default'),
       install_command: z.string().default('npm ci'),
       test_command: z.string().default('npm test'),
       // Run a focused test for the changed test file before the full suite.

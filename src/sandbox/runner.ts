@@ -17,12 +17,15 @@ export function buildDockerCommand(opts: {
   image: string;
   workdir: string;
   command: string;
+  /** 'none' isolates the container from the network (no exfiltration). */
+  network?: 'default' | 'none';
 }): { cmd: string; args: string[] } {
   return {
     cmd: 'docker',
     args: [
       'run',
       '--rm',
+      ...(opts.network === 'none' ? ['--network', 'none'] : []),
       '-v',
       `${opts.workdir}:/workspace`,
       '-w',
@@ -50,6 +53,28 @@ export function dockerAvailable(): boolean {
 }
 
 const TEST_FILE_RE = /(\.test\.|\.spec\.|_test\.|test_)/i;
+
+/**
+ * Reject a unified diff whose target paths escape the repository (path
+ * traversal via `..`, or absolute paths). A model-generated patch is untrusted
+ * input applied with `git apply`; this is a hard guard before we run it.
+ */
+export function validatePatchPaths(diff: string): { ok: boolean; offending: string[] } {
+  const offending: string[] = [];
+  const re = /^(?:diff --git a\/.+ b\/(.+)|\+\+\+ (?:b\/)?(.+?)|--- (?:a\/)?(.+?))\s*$/;
+  for (const raw of diff.split(/\r?\n/)) {
+    const m = re.exec(raw);
+    if (!m) continue;
+    let p = (m[1] ?? m[2] ?? m[3] ?? '').trim();
+    if (!p || p === '/dev/null') continue;
+    p = p.replace(/^["']|["']$/g, '');
+    const norm = p.replace(/\\/g, '/');
+    if (path.isAbsolute(norm) || norm.startsWith('/') || norm.split('/').includes('..')) {
+      offending.push(p);
+    }
+  }
+  return { ok: offending.length === 0, offending: [...new Set(offending)] };
+}
 
 export interface SandboxOptions {
   rootDir: string;
@@ -101,6 +126,13 @@ export class PatchSandbox {
     const filesChanged: string[] = [];
     let patchApplied = false;
     if (patch.unified_diff && patch.unified_diff.trim()) {
+      // Security guard: never apply a diff whose paths escape the repo.
+      const guard = validatePatchPaths(patch.unified_diff);
+      if (!guard.ok) {
+        log.error(`Refusing patch — paths escape the repository: ${guard.offending.join(', ')}`);
+        const validation = await this.validate(workdir);
+        return { branch, workdir, filesChanged, patchApplied: false, validation, reason: 'patch_paths_rejected' };
+      }
       const patchFile = path.join(workdir, '.kafuops-patch.diff');
       fs.writeFileSync(patchFile, patch.unified_diff, 'utf8');
       let applyResult = await run('git', ['apply', '--whitespace=nowarn', '.kafuops-patch.diff'], {
@@ -221,7 +253,7 @@ export class PatchSandbox {
     // Execute a command either inside a container or via the local shell.
     const exec = (command: string) => {
       if (useDocker) {
-        const { cmd, args } = buildDockerCommand({ image: sb.image, workdir, command });
+        const { cmd, args } = buildDockerCommand({ image: sb.image, workdir, command, network: sb.network });
         return run(cmd, args, { cwd: workdir, timeoutMs: sb.timeout_seconds * 1000 });
       }
       return runShell(command, { cwd: workdir, timeoutMs: sb.timeout_seconds * 1000 });

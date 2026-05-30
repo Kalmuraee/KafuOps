@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/Kalmuraee/KafuOps/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Kalmuraee/KafuOps/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/Kalmuraee/KafuOps/releases"><img alt="version" src="https://img.shields.io/badge/version-0.2.0-0F766E?style=flat-square"></a>
+  <a href="https://github.com/Kalmuraee/KafuOps/releases"><img alt="version" src="https://img.shields.io/badge/version-0.3.0-0F766E?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-0F766E?style=flat-square"></a>
   <a href="STATUS.md"><img alt="implementation status" src="https://img.shields.io/badge/STATUS.md-honest%20mapping-F59E0B?style=flat-square"></a>
   <a href="https://kalmuraee.github.io/KafuOps/"><img alt="site" src="https://img.shields.io/badge/site-kalmuraee.github.io%2FKafuOps-0F766E?style=flat-square"></a>

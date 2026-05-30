@@ -12,6 +12,7 @@ import {
 import { AuditLogger } from '../audit/logger.js';
 import { SYSTEM_BASE, renderEvidenceBlock } from './prompts.js';
 import { run } from '../util/shell.js';
+import { withRetry, isTransientLLMError } from '../util/retry.js';
 import { log } from '../util/logger.js';
 
 const RootCauseSchema = z.object({
@@ -315,16 +316,17 @@ Return JSON: { "text": "..." }`;
     log.debug(
       `LLM call provider=${this.activeProvider} purpose=${args.purpose} model=${args.model} ~${tokenEstimate} tokens`,
     );
-    let text: string;
-    if (this.activeProvider === 'openai') {
-      text = await this.callOpenAI(args);
-    } else if (this.activeProvider === 'anthropic') {
-      text = await this.callAnthropic(args);
-    } else if (this.activeProvider === 'codex' || this.activeProvider === 'claude-cli') {
-      text = await this.callCli(args);
-    } else {
-      throw new Error('LLM client not initialized');
-    }
+    // Retry transient provider failures (429 / 5xx / timeouts) with backoff.
+    const text = await withRetry(
+      (attempt) => {
+        if (attempt > 0) log.warn(`LLM retry ${attempt} for ${args.purpose} (provider=${this.activeProvider})`);
+        if (this.activeProvider === 'openai') return this.callOpenAI(args);
+        if (this.activeProvider === 'anthropic') return this.callAnthropic(args);
+        if (this.activeProvider === 'codex' || this.activeProvider === 'claude-cli') return this.callCli(args);
+        return Promise.reject(new Error('LLM client not initialized'));
+      },
+      { retries: this.opts.config.llm.max_retries, isRetryable: isTransientLLMError },
+    );
     const cleaned = extractJson(text);
     let parsed: unknown;
     try {
@@ -386,15 +388,20 @@ Return JSON: { "text": "..." }`;
     user: string;
   }): Promise<string> {
     if (!this.anthropicClient) throw new Error('Anthropic client not initialized');
-    const system = [
+    const systemText = [
       `${SYSTEM_BASE}\n${args.systemExtra}`,
       'Reply with a single JSON object — no prose, no markdown fences, no preamble.',
     ].join('\n');
+    // Prompt caching: the system prompt is stable across calls, so mark it
+    // cacheable (sent as a content block with cache_control) to cut cost/latency.
+    const system = this.opts.config.llm.prompt_cache
+      ? [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
+      : systemText;
     const message = await this.anthropicClient.messages.create({
       model: args.model,
       max_tokens: this.opts.config.llm.anthropic_max_tokens,
       temperature: 0.1,
-      system,
+      system: system as never,
       messages: [{ role: 'user', content: args.user }],
     });
     // Concatenate text blocks (Anthropic returns content as an array of blocks

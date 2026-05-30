@@ -63,7 +63,7 @@ still on the design board.
 | `REDACTION.md` | ✅ | Built-in patterns + JSON-field scrubbing + ReDoS guard. Applied at every intake (incl. the manual `/v1/incidents` endpoint) and before every model call. |
 | `ROADMAP.md` | 🟡 | Read alongside this file. |
 | `RUNTIME_MODES.md` | ✅ | Wrapper, webhook, and sidecar (webhook + file tailing) all work. Kubernetes via `deploy/`. A minimal embedded Node SDK (`installErrorReporter`) is now included — see `docs/NODE_SDK.md`. |
-| `SECURITY_PRIVACY.md` | ✅ | Redaction, audit logging, never_modify policy, HMAC + bearer webhook auth, require_redaction gate. |
+| `SECURITY_PRIVACY.md` | ✅ | Redaction, audit logging, never_modify policy, HMAC + bearer webhook auth, require_redaction gate, **patch path-traversal guard**, optional **docker network isolation** (`sandbox.network: none`), **LLM retry/backoff**. |
 | `SELF_HOSTING.md` | ✅ | Docker compose + Helm chart + raw K8s manifests. |
 | `SETUP_WIZARD.md` | ✅ | `kafuops init` auto-discovers the stack/start-command/repo/packaging/log-files/AI tooling and confirms it, offers a provider menu (incl. detected Codex/Claude CLIs), and live-fetches models to choose. See `AI_PROVIDERS.md`. |
 | `TROUBLESHOOTING.md` | ✅ | Reference doc; `policies explain --incident` now exists. |

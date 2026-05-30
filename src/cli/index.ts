@@ -29,7 +29,7 @@ const program = new Command();
 program
   .name('kafuops')
   .description('Open-source production-debugging agent.')
-  .version('0.2.0')
+  .version('0.3.0')
   .option('--debug', 'verbose logging')
   .hook('preAction', (cmd) => {
     if (cmd.opts().debug) setLogLevel('debug');

@@ -17,6 +17,14 @@ describe('buildDockerCommand', () => {
     // Runs the command through a shell inside the container.
     expect(args[args.length - 1]).toContain('npm ci');
   });
+
+  it('isolates the network when requested', () => {
+    const open = buildDockerCommand({ image: 'node:22', workdir: '/w', command: 'npm test', network: 'none' });
+    expect(open.args).toContain('--network');
+    expect(open.args.join(' ')).toContain('--network none');
+    const def = buildDockerCommand({ image: 'node:22', workdir: '/w', command: 'npm test' });
+    expect(def.args.join(' ')).not.toContain('--network none');
+  });
 });
 
 describe('substituteTestCommand', () => {

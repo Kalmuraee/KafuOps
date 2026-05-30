@@ -1,6 +1,6 @@
 {
   "name": "kafuops",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Open-source production-debugging agent that turns backend incidents into evidence-backed merge requests.",
   "license": "AGPL-3.0-only",
   "type": "module",
