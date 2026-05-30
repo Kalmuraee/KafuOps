@@ -1,6 +1,18 @@
 # Changelog
 
-## 0.3.0 — quality (in progress)
+## 0.3.0 — quality
+
+### Performance & security
+
+- **Patch path-traversal guard**: a model-generated diff whose paths escape the
+  repo (`..` / absolute) is refused before `git apply` (`validatePatchPaths`).
+- **LLM retry/backoff**: transient provider failures (429/5xx/timeouts) are
+  retried with exponential backoff (`llm.max_retries`); deterministic errors
+  aren't.
+- **Docker network isolation**: `sandbox.network: none` runs the container with
+  `--network none` (no exfiltration during tests).
+- **Anthropic prompt caching**: the stable system prompt is marked cacheable
+  (`llm.prompt_cache`, default on) to cut cost/latency on repeated calls.
 
 ### Operator experience
 
