@@ -27,6 +27,37 @@ KafuOps is designed around one important rule:
 > 📋 **Looking for the honest picture of what works today vs. what is spec only?**
 > See [STATUS.md](STATUS.md) — every doc in `docs/` is mapped to ✅ implemented, 🟡 partial, or 🔲 not yet.
 
+## See it fix a real bug
+
+A planted bug in a tiny checkout service — KafuOps diagnoses it, writes the patch, **self-corrects when the first attempt fails**, validates the fix in a sandbox, and opens a reviewable MR. This run is driven by the locally-installed **Claude CLI** (no API key).
+
+<p align="center">
+  <a href="https://kalmuraee.github.io/KafuOps/"><img src="assets/demo/recording.svg" alt="KafuOps fixing a bug end to end" width="760"></a><br>
+  <em>▶ <a href="https://kalmuraee.github.io/KafuOps/">Watch the animated demo on the site</a> · reproduce locally with <code>scripts/demo.sh</code></em>
+</p>
+
+The fix KafuOps generated, after the sandbox test went green:
+
+```diff
+- return price - price * percent;
++ return price - price * (percent / 100);
+```
+
+```
+$ scripts/demo.sh
+### Before — the test fails (red):
+AssertionError: 20% off $100 should be $80   (-1900 !== 80)
+
+### KafuOps runs (provider: claude CLI):
+! attempt 1: patch did not apply → revise → retry
+✓ attempt 2: patch applied, tests passed        # self-correcting loop
+  confidence=80 (high)   risk=low
+! MR ready for review — saved mr-body.md
+
+### After — the test passes (green):
+all tests passed
+```
+
 ## What KafuOps does
 
 - Observes backend logs (wrapper mode + sidecar file tailing), OpenTelemetry traces, runtime errors, and alert webhooks (Sentry/Datadog/Alertmanager).

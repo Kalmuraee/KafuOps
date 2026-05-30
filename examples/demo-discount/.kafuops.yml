@@ -1,0 +1,19 @@
+version: 1
+project:
+  name: checkout-svc
+  language: javascript
+  framework: node
+repo:
+  provider: none
+llm:
+  # Uses your locally-installed Claude CLI — no API key needed.
+  # Swap to openai/anthropic (with a key) or codex as you like.
+  provider: claude-cli
+  models: { analysis: "", patch: "" }
+sandbox:
+  install_command: ""
+  test_command: node test.js
+policies:
+  confidence:
+    open_mr_if_score_at_least: 60
+    require_human_approval_if_below: 90

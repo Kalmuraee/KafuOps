@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="298" viewBox="0 0 820 298" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14">
+  <rect x="0.5" y="0.5" width="819" height="297" rx="12" fill="#0d1117" stroke="#21262d"/>
+  <rect x="0.5" y="0.5" width="819" height="34" rx="12" fill="#161b22"/>
+  <rect x="0.5" y="22" width="819" height="12" fill="#161b22"/>
+  <circle cx="20" cy="17" r="6" fill="#f85149"/><circle cx="40" cy="17" r="6" fill="#d29922"/><circle cx="60" cy="17" r="6" fill="#3fb950"/>
+  <text x="410" y="22" fill="#7d8590" text-anchor="middle" font-size="12">kafuops — incident → fix</text>
+  <text x="22" y="56" fill="#7d8590" xml:space="preserve">$ node test.js            # the bug, before KafuOps</text>
+  <text x="22" y="78" fill="#f85149" xml:space="preserve">AssertionError: 20% off $100 should be $80   (got -1900)</text>
+  <text x="22" y="100" fill="#cdd6e4" xml:space="preserve"></text>
+  <text x="22" y="122" fill="#2dd4bf" font-weight="600" xml:space="preserve">$ kafuops incidents open-mr inc_demo_discount   (provider: claude CLI)</text>
+  <text x="22" y="144" fill="#cdd6e4" xml:space="preserve">Open MR for inc_demo_discount</text>
+  <text x="22" y="166" fill="#7d8590" xml:space="preserve">  analyze  →  plan  →  patch  →  sandbox: node test.js</text>
+  <text x="22" y="188" fill="#d29922" xml:space="preserve">! attempt 1: patch did not apply → read failure → revise</text>
+  <text x="22" y="210" fill="#3fb950" xml:space="preserve">✓ attempt 2: patch applied, tests passed   (self-correcting loop)</text>
+  <text x="22" y="232" fill="#cdd6e4" xml:space="preserve">  confidence=80 (high)   risk=low</text>
+  <text x="22" y="254" fill="#d29922" xml:space="preserve">! MR ready for review — saved mr-body.md</text>
+</svg>
