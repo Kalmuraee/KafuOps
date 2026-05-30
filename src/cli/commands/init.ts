@@ -2,219 +2,245 @@ import fs from 'node:fs';
 import path from 'node:path';
 import prompts from 'prompts';
 import { ConfigSchema, KafuOpsConfig } from '../../config/schema.js';
-import { detectFramework } from '../../scanner/framework.js';
 import { writeConfig } from '../../config/loader.js';
 import { ensureDirs, getPaths } from '../../util/paths.js';
+import { runDiscovery, DiscoveryResult } from '../../wizard/discover.js';
+import { buildProviderChoices } from '../../wizard/providers.js';
+import { fetchModels, pickDefaults, CURATED, ModelProvider } from '../../llm/models.js';
 import { log } from '../../util/logger.js';
-// fs is already imported above; we reuse it here for the .env writer.
 
 export interface InitOptions {
   yes?: boolean;
   cwd?: string;
 }
 
+const onCancel = (): never => {
+  log.info('Aborted.');
+  process.exit(1);
+};
+
 export async function initCommand(options: InitOptions = {}): Promise<void> {
   const cwd = options.cwd ?? process.cwd();
   const configPath = path.join(cwd, '.kafuops.yml');
-  if (fs.existsSync(configPath)) {
-    log.warn(`.kafuops.yml already exists at ${configPath}.`);
-    if (!options.yes) {
-      const confirm = await prompts({
-        type: 'confirm',
-        name: 'overwrite',
-        message: 'Overwrite?',
-        initial: false,
-      });
-      if (!confirm.overwrite) {
-        log.info('Aborted.');
-        return;
-      }
-    }
+  if (fs.existsSync(configPath) && !options.yes) {
+    const { overwrite } = await prompts({ type: 'confirm', name: 'overwrite', message: '.kafuops.yml exists — overwrite?', initial: false });
+    if (!overwrite) return log.info('Aborted.');
   }
 
-  const fw = detectFramework(cwd);
-  // Per-provider model defaults. Bump in `.kafuops.yml` to whatever your
-  // account currently has access to (catalogs move faster than this MVP).
-  const DEFAULTS: Record<string, { analysis: string; patch: string }> = {
-    openai: { analysis: 'gpt-4o-mini', patch: 'gpt-4o' },
-    'azure-openai': { analysis: 'gpt-4o-mini', patch: 'gpt-4o' },
-    anthropic: { analysis: 'claude-haiku-4-5-20251001', patch: 'claude-sonnet-4-6' },
-    none: { analysis: 'gpt-4o-mini', patch: 'gpt-4o' },
-  };
+  log.banner('KafuOps setup — discovering your service…');
+  const d = runDiscovery(cwd);
+  printFindings(d);
 
-  let answers: any;
-  if (options.yes) {
-    const d = DEFAULTS['openai'];
-    answers = {
-      name: fw.service_name ?? path.basename(cwd),
-      language: fw.language,
-      framework: fw.framework,
-      provider: 'none',
-      repoUrl: '',
-      gitToken: '',
-      mode: 'wrapper',
-      llmProvider: 'openai',
-      openaiKey: '',
-      anthropicKey: '',
-      analysisModel: d.analysis,
-      patchModel: d.patch,
-      install: fw.install_command ?? 'npm ci',
-      testCommand: fw.test_command ?? 'npm test',
-      sandboxType: 'local',
-    };
-  } else {
-    answers = await prompts(
-      [
-        { type: 'text', name: 'name', message: 'Project name', initial: fw.service_name ?? path.basename(cwd) },
-        { type: 'text', name: 'language', message: 'Primary language', initial: fw.language },
-        { type: 'text', name: 'framework', message: 'Backend framework', initial: fw.framework },
-        {
-          type: 'select',
-          name: 'provider',
-          message: 'Repository provider',
-          choices: [
-            { title: 'GitHub', value: 'github' },
-            { title: 'GitLab', value: 'gitlab' },
-            { title: 'None for now', value: 'none' },
-          ],
-        },
-        {
-          type: (prev: string) => (prev === 'none' ? null : 'text'),
-          name: 'repoUrl',
-          message: 'Repository URL (e.g. git@github.com:org/api.git)',
-          initial: detectRepoUrl(cwd) ?? '',
-        },
-        {
-          type: (_: unknown, values: any) => (values.provider === 'none' ? null : 'password'),
-          name: 'gitToken',
-          message: 'Git access token (KAFUOPS_GIT_TOKEN — pasted, stored in .kafuops/.env, gitignored)',
-        },
-        {
-          type: 'select',
-          name: 'mode',
-          message: 'Runtime mode',
-          choices: [
-            { title: 'Wrapper (kafuops run -- <cmd>) — recommended for local/staging', value: 'wrapper' },
-            { title: 'Sidecar agent — recommended for production', value: 'sidecar' },
-            { title: 'Webhook-only', value: 'webhook' },
-            { title: 'Kubernetes', value: 'kubernetes' },
-          ],
-        },
-        {
-          type: 'select',
-          name: 'llmProvider',
-          message: 'LLM provider',
-          choices: [
-            { title: 'OpenAI', value: 'openai' },
-            { title: 'Anthropic (Claude)', value: 'anthropic' },
-            { title: 'Azure OpenAI', value: 'azure-openai' },
-            { title: 'None for now', value: 'none' },
-          ],
-        },
-        {
-          type: (prev: string) =>
-            (prev === 'openai' || prev === 'azure-openai') && !process.env.OPENAI_API_KEY ? 'password' : null,
-          name: 'openaiKey',
-          message: 'OPENAI_API_KEY (stored in .kafuops/.env, gitignored)',
-        },
-        {
-          type: (prev: string) => (prev === 'anthropic' && !process.env.ANTHROPIC_API_KEY ? 'password' : null),
-          name: 'anthropicKey',
-          message: 'ANTHROPIC_API_KEY (stored in .kafuops/.env, gitignored)',
-        },
-        {
-          type: 'text',
-          name: 'analysisModel',
-          message: (_: unknown, values: any) =>
-            `Model for analysis (default ${DEFAULTS[values.llmProvider]?.analysis} — bump to your account's current model)`,
-          initial: (_: unknown, values: any) => DEFAULTS[values.llmProvider]?.analysis ?? DEFAULTS.openai.analysis,
-        },
-        {
-          type: 'text',
-          name: 'patchModel',
-          message: (_: unknown, values: any) =>
-            `Model for code patches (default ${DEFAULTS[values.llmProvider]?.patch} — bump to your account's current model)`,
-          initial: (_: unknown, values: any) => DEFAULTS[values.llmProvider]?.patch ?? DEFAULTS.openai.patch,
-        },
-        { type: 'text', name: 'install', message: 'Install command', initial: fw.install_command ?? 'npm ci' },
-        { type: 'text', name: 'testCommand', message: 'Test command', initial: fw.test_command ?? 'npm test' },
-        {
-          type: 'select',
-          name: 'sandboxType',
-          message: 'Sandbox type',
-          choices: [
-            { title: 'Local', value: 'local' },
-            { title: 'Docker', value: 'docker' },
-          ],
-        },
-      ],
-      { onCancel: () => process.exit(1) },
-    );
-  }
+  const built = options.yes ? configFromDiscovery(d, cwd) : await interactiveConfig(d, cwd);
 
-  const config: KafuOpsConfig = ConfigSchema.parse({
+  writeConfig(configPath, built.config);
+  const paths = getPaths(cwd);
+  ensureDirs(paths);
+  writeEnv(paths.base, cwd, built.secrets);
+
+  log.ok(`Created ${configPath}`);
+  log.info('');
+  printSummary(built.config, d);
+}
+
+// ---------- discovery presentation ----------
+
+function printFindings(d: DiscoveryResult): void {
+  log.info('Discovered:');
+  log.info(`  • Stack: ${d.framework.language} / ${d.framework.framework}`);
+  log.info(`  • Start command: ${d.startCommand ?? '(unknown — you can set it)'}`);
+  log.info(`  • Repository: ${d.repo.url ? `${d.repo.url} (${d.repo.provider})` : '(no git remote found)'}`);
+  const signals = [
+    d.containerization.dockerfile && 'Dockerfile',
+    d.containerization.compose && 'docker-compose',
+    d.containerization.kubernetes && 'kubernetes/helm',
+  ].filter(Boolean);
+  log.info(`  • Packaging: ${signals.length ? signals.join(', ') : 'none detected'} → suggested mode: ${d.suggestedMode}`);
+  if (d.logFiles.length) log.info(`  • Log files: ${d.logFiles.join(', ')}`);
+  const tools = [
+    d.tooling.codexCli && 'codex CLI',
+    d.tooling.claudeCli && 'claude CLI',
+    d.tooling.openaiKeyEnv && 'OPENAI_API_KEY',
+    d.tooling.anthropicKeyEnv && 'ANTHROPIC_API_KEY',
+  ].filter(Boolean);
+  log.info(`  • AI available: ${tools.length ? tools.join(', ') : 'none detected'}`);
+  log.info('');
+}
+
+// ---------- non-interactive (--yes) ----------
+
+interface BuiltConfig {
+  config: KafuOpsConfig;
+  secrets: { gitToken?: string; openaiKey?: string; anthropicKey?: string };
+}
+
+function configFromDiscovery(d: DiscoveryResult, cwd: string): BuiltConfig {
+  const config = ConfigSchema.parse({
     version: 1,
     project: {
-      name: answers.name,
-      language: answers.language,
-      framework: answers.framework,
-      service_name: answers.name,
-      default_branch: 'main',
+      name: d.framework.service_name ?? path.basename(cwd),
+      language: d.framework.language,
+      framework: d.framework.framework,
+      service_name: d.framework.service_name ?? path.basename(cwd),
     },
-    repo: {
-      provider: answers.provider,
-      url: answers.repoUrl || undefined,
-    },
-    runtime: { mode: answers.mode },
-    llm: {
-      provider: answers.llmProvider,
-      models: { analysis: answers.analysisModel, patch: answers.patchModel },
-    },
+    repo: { provider: d.repo.provider, url: d.repo.url ?? undefined },
+    runtime: { mode: d.suggestedMode, service_command: d.startCommand },
+    llm: { provider: 'none', models: { analysis: CURATED.openai[1], patch: CURATED.openai[0] } },
     sandbox: {
-      type: answers.sandboxType,
-      install_command: answers.install,
-      test_command: answers.testCommand,
-      targeted_test_command: fw.targeted_test_command ?? 'npm test -- {test_file}',
+      type: d.containerization.dockerfile ? 'docker' : 'local',
+      install_command: d.installCommand,
+      test_command: d.testCommand,
+      targeted_test_command: d.framework.targeted_test_command ?? 'npm test -- {test_file}',
+    },
+  });
+  return { config, secrets: {} };
+}
+
+// ---------- interactive ----------
+
+async function interactiveConfig(d: DiscoveryResult, cwd: string): Promise<BuiltConfig> {
+  const idx = <T>(arr: T[], v: T): number => Math.max(0, arr.indexOf(v));
+  const repoProviders = ['github', 'gitlab', 'none'];
+  const modes = ['wrapper', 'sidecar', 'webhook', 'kubernetes'];
+
+  const basics = await prompts(
+    [
+      { type: 'text', name: 'name', message: 'Project name', initial: d.framework.service_name ?? path.basename(cwd) },
+      { type: 'text', name: 'language', message: 'Primary language', initial: d.framework.language },
+      { type: 'text', name: 'framework', message: 'Backend framework', initial: d.framework.framework },
+      {
+        type: 'select', name: 'provider', message: 'Repository provider',
+        choices: [{ title: 'GitHub', value: 'github' }, { title: 'GitLab', value: 'gitlab' }, { title: 'None for now', value: 'none' }],
+        initial: idx(repoProviders, d.repo.provider),
+      },
+      { type: (p: string) => (p === 'none' ? null : 'text'), name: 'repoUrl', message: 'Repository URL', initial: d.repo.url ?? '' },
+      {
+        type: (_: unknown, v: any) => (v.provider !== 'none' && !process.env.KAFUOPS_GIT_TOKEN ? 'password' : null),
+        name: 'gitToken', message: 'Git access token (stored in .kafuops/.env, gitignored)',
+      },
+      {
+        type: 'select', name: 'mode', message: 'Runtime mode',
+        choices: [
+          { title: 'Wrapper — kafuops run -- <cmd> (local/staging)', value: 'wrapper' },
+          { title: 'Sidecar — agent + webhooks/log tailing (production)', value: 'sidecar' },
+          { title: 'Webhook-only', value: 'webhook' },
+          { title: 'Kubernetes', value: 'kubernetes' },
+        ],
+        initial: idx(modes, d.suggestedMode),
+      },
+      { type: 'text', name: 'startCommand', message: 'Service start command', initial: d.startCommand ?? '' },
+      {
+        type: (_: unknown, v: any) => ((v.mode === 'sidecar' || v.mode === 'kubernetes') && d.logFiles.length ? 'text' : null),
+        name: 'logSource', message: 'Log file to tail (blank = webhooks/OTel only)', initial: d.logFiles[0] ?? '',
+      },
+    ],
+    { onCancel },
+  );
+
+  const { llmProvider } = await prompts(
+    { type: 'select', name: 'llmProvider', message: 'AI provider', choices: buildProviderChoices(d.tooling) as any, initial: 0 },
+    { onCancel },
+  );
+
+  let openaiKey = '';
+  let anthropicKey = '';
+  let analysisModel = '';
+  let patchModel = '';
+
+  if (llmProvider === 'openai' || llmProvider === 'anthropic') {
+    const provider = llmProvider as ModelProvider;
+    const envVar = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+    let key = process.env[envVar] ?? '';
+    if (!key) {
+      const r = await prompts({ type: 'password', name: 'key', message: `${envVar} (stored in .kafuops/.env, gitignored)` }, { onCancel });
+      key = r.key ?? '';
+      if (provider === 'anthropic') anthropicKey = key; else openaiKey = key;
+    }
+    let models = CURATED[provider];
+    if (key) {
+      log.info('Fetching the latest models for your account…');
+      const res = await fetchModels(provider, key);
+      models = res.models;
+      log.dim(`  ${res.source === 'live' ? `live: ${models.length} models` : 'offline — using a curated list'}`);
+    } else {
+      log.dim('  No key entered — choosing from a curated model list.');
+    }
+    const def = pickDefaults(provider, models);
+    const sel = await prompts(
+      [
+        { type: 'select', name: 'analysis', message: 'Model for analysis (fast/cheap)', choices: models.map((m) => ({ title: m, value: m })), initial: idx(models, def.analysis) },
+        { type: 'select', name: 'patch', message: 'Model for code patches (strong)', choices: models.map((m) => ({ title: m, value: m })), initial: idx(models, def.patch) },
+      ],
+      { onCancel },
+    );
+    analysisModel = sel.analysis;
+    patchModel = sel.patch;
+  } else if (llmProvider === 'codex' || llmProvider === 'claude-cli') {
+    const r = await prompts({ type: 'text', name: 'model', message: 'CLI model (blank = the CLI default)', initial: '' }, { onCancel });
+    analysisModel = r.model ?? '';
+    patchModel = r.model ?? '';
+  } else {
+    analysisModel = CURATED.openai[1];
+    patchModel = CURATED.openai[0];
+  }
+
+  const tail = await prompts(
+    [
+      { type: 'select', name: 'sandboxType', message: 'Sandbox', choices: [{ title: 'Local', value: 'local' }, { title: 'Docker', value: 'docker' }], initial: d.containerization.dockerfile ? 1 : 0 },
+      { type: 'text', name: 'install', message: 'Install command', initial: d.installCommand },
+      { type: 'text', name: 'testCommand', message: 'Test command', initial: d.testCommand },
+    ],
+    { onCancel },
+  );
+
+  const runtime: Record<string, unknown> = { mode: basics.mode, service_command: basics.startCommand || null };
+  if (basics.logSource) runtime.log_sources = [{ type: 'file', path: basics.logSource }];
+
+  const config = ConfigSchema.parse({
+    version: 1,
+    project: { name: basics.name, language: basics.language, framework: basics.framework, service_name: basics.name },
+    repo: { provider: basics.provider, url: basics.repoUrl || undefined },
+    runtime,
+    llm: { provider: llmProvider, models: { analysis: analysisModel, patch: patchModel } },
+    sandbox: {
+      type: tail.sandboxType,
+      install_command: tail.install,
+      test_command: tail.testCommand,
+      targeted_test_command: d.framework.targeted_test_command ?? 'npm test -- {test_file}',
     },
   });
 
-  writeConfig(configPath, config);
-  const paths = getPaths(cwd);
-  ensureDirs(paths);
+  return { config, secrets: { gitToken: basics.gitToken, openaiKey, anthropicKey } };
+}
 
-  // Write secrets to .kafuops/.env so they aren't committed and can be sourced
-  // by the user or read at runtime. Never write them to .kafuops.yml.
-  const envLines: string[] = [];
-  if (answers.gitToken) envLines.push(`KAFUOPS_GIT_TOKEN=${answers.gitToken}`);
-  if (answers.openaiKey) envLines.push(`OPENAI_API_KEY=${answers.openaiKey}`);
-  if (answers.anthropicKey) envLines.push(`ANTHROPIC_API_KEY=${answers.anthropicKey}`);
-  if (envLines.length) {
-    const envPath = path.join(paths.base, '.env');
-    fs.writeFileSync(envPath, envLines.join('\n') + '\n', { mode: 0o600 });
-    log.ok(`Wrote ${envPath} (mode 0600). Source it before running:`);
-    log.dim(`  export $(grep -v '^#' ${path.relative(cwd, envPath)} | xargs)`);
+// ---------- output ----------
+
+function writeEnv(baseDir: string, cwd: string, secrets: BuiltConfig['secrets']): void {
+  const lines: string[] = [];
+  if (secrets.gitToken) lines.push(`KAFUOPS_GIT_TOKEN=${secrets.gitToken}`);
+  if (secrets.openaiKey) lines.push(`OPENAI_API_KEY=${secrets.openaiKey}`);
+  if (secrets.anthropicKey) lines.push(`ANTHROPIC_API_KEY=${secrets.anthropicKey}`);
+  if (!lines.length) return;
+  const envPath = path.join(baseDir, '.env');
+  fs.writeFileSync(envPath, lines.join('\n') + '\n', { mode: 0o600 });
+  log.ok(`Wrote ${envPath} (mode 0600). Source it before running:`);
+  log.dim(`  export $(grep -v '^#' ${path.relative(cwd, envPath)} | xargs)`);
+}
+
+function printSummary(config: KafuOpsConfig, d: DiscoveryResult): void {
+  log.info('Configured:');
+  log.info(`  • Mode: ${config.runtime.mode} · Provider: ${config.llm.provider}`);
+  if (config.llm.provider !== 'none') {
+    log.info(`  • Models: analysis=${config.llm.models.analysis || '(cli default)'} patch=${config.llm.models.patch || '(cli default)'}`);
   }
-
-  log.ok(`Created ${configPath}`);
-  log.ok(`Created ${paths.base}/`);
   log.info('');
   log.info('Next:');
   log.info('  kafuops doctor');
   log.info('  kafuops scan');
-  log.info('  kafuops run -- <your backend command>');
-}
-
-/**
- * Best-effort: parse `git remote get-url origin` so the wizard can pre-fill
- * the repo URL if the directory is already a git checkout.
- */
-function detectRepoUrl(cwd: string): string | null {
-  try {
-    const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
-    const res = spawnSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], { encoding: 'utf8' });
-    if (res.status === 0 && res.stdout) return res.stdout.trim();
-  } catch {
-    // ignore
+  if (config.runtime.mode === 'wrapper') {
+    log.info(`  kafuops run -- ${d.startCommand ?? '<your backend command>'}`);
+  } else {
+    log.info('  kafuops agent start    # webhook + log-tailing intake');
+    log.info('  kafuops worker start   # drive incidents → MRs');
   }
-  return null;
 }

@@ -11,6 +11,7 @@ import {
 } from '../types/index.js';
 import { AuditLogger } from '../audit/logger.js';
 import { SYSTEM_BASE, renderEvidenceBlock } from './prompts.js';
+import { run } from '../util/shell.js';
 import { log } from '../util/logger.js';
 
 const RootCauseSchema = z.object({
@@ -46,13 +47,42 @@ const CodePatchSchema = z.object({
   new_test_files: z.array(z.string()).default([]),
 });
 
-export type LLMProvider = 'openai' | 'anthropic' | 'dry-run';
+export type LLMProvider = 'openai' | 'anthropic' | 'codex' | 'claude-cli' | 'dry-run';
+
+/** Runs a local CLI and returns its result. Injectable for testing. */
+export type CliRunner = (
+  cmd: string,
+  args: string[],
+) => Promise<{ code: number; stdout: string; stderr: string; timedOut?: boolean }>;
+
+/**
+ * Build the argv to drive a local AI CLI (Codex or Claude) non-interactively.
+ * The whole prompt is passed as a single argv element (no shell), so arbitrary
+ * content is safe. `--model` is added only when a non-empty model is given.
+ */
+export function buildCliCommand(
+  provider: 'codex' | 'claude-cli',
+  prompt: string,
+  model?: string,
+): { cmd: string; args: string[] } {
+  const m = model && model.trim() ? model.trim() : null;
+  if (provider === 'claude-cli') {
+    return {
+      cmd: 'claude',
+      args: ['-p', prompt, '--output-format', 'text', ...(m ? ['--model', m] : [])],
+    };
+  }
+  // codex
+  return { cmd: 'codex', args: ['exec', ...(m ? ['--model', m] : []), prompt] };
+}
 
 export interface OrchestratorOptions {
   rootDir: string;
   config: KafuOpsConfig;
   /** When true, never makes a real API call. Used by tests and dry runs. */
   dryRun?: boolean;
+  /** Injectable runner for the local CLI providers (codex/claude-cli). */
+  cliRunner?: CliRunner;
   /**
    * How this orchestrator was invoked. `manual` = a human ran a CLI command
    * (`incidents analyze/open-mr`); `auto` = the background worker drove it.
@@ -70,9 +100,11 @@ export class LLMOrchestrator {
   private readonly anthropicClient: Anthropic | null;
   private readonly dryRun: boolean;
   private readonly activeProvider: LLMProvider;
+  private readonly cliRunner: CliRunner;
 
   constructor(private readonly opts: OrchestratorOptions) {
     this.audit = new AuditLogger(opts.rootDir);
+    this.cliRunner = opts.cliRunner ?? ((cmd, args) => run(cmd, args, { timeoutMs: 120_000 }));
     const requested = opts.config.llm.provider;
     const invocation = opts.invocation ?? 'manual';
     const triggerMode = opts.config.llm.trigger_mode;
@@ -100,6 +132,12 @@ export class LLMOrchestrator {
         this.openaiClient = null;
         this.anthropicClient = opts.anthropicClient ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       }
+    } else if (requested === 'codex' || requested === 'claude-cli') {
+      // Local CLI providers don't need an API key — they delegate to the
+      // installed `codex` / `claude` binary (verified by `kafuops doctor`).
+      this.activeProvider = requested;
+      this.openaiClient = null;
+      this.anthropicClient = null;
     } else {
       // openai or azure-openai → both use the OpenAI SDK shape.
       if (!process.env.OPENAI_API_KEY) {
@@ -246,6 +284,8 @@ Return JSON: { "text": "..." }`;
       text = await this.callOpenAI(args);
     } else if (this.activeProvider === 'anthropic') {
       text = await this.callAnthropic(args);
+    } else if (this.activeProvider === 'codex' || this.activeProvider === 'claude-cli') {
+      text = await this.callCli(args);
     } else {
       throw new Error('LLM client not initialized');
     }
@@ -330,6 +370,32 @@ Return JSON: { "text": "..." }`;
       }
     }
     return out.join('');
+  }
+
+  /**
+   * Drive a local AI CLI (Codex or Claude) non-interactively. The combined
+   * system+user prompt is passed as a single argv element; we ask for JSON-only
+   * and reuse extractJson() to tolerate any wrapping the CLI adds.
+   */
+  private async callCli(args: {
+    purpose: string;
+    model: string;
+    systemExtra: string;
+    user: string;
+  }): Promise<string> {
+    const provider = this.activeProvider as 'codex' | 'claude-cli';
+    const prompt = [
+      `${SYSTEM_BASE}\n${args.systemExtra}`.trim(),
+      args.user,
+      'Return ONLY a single JSON object — no prose, no markdown fences.',
+    ].join('\n\n');
+    const { cmd, args: cmdArgs } = buildCliCommand(provider, prompt, args.model);
+    const res = await this.cliRunner(cmd, cmdArgs);
+    if (res.code !== 0) {
+      const detail = (res.stderr || res.stdout || '').trim().slice(0, 200);
+      throw new Error(`${cmd} CLI failed (exit ${res.code})${detail ? `: ${detail}` : ''}`);
+    }
+    return res.stdout;
   }
 
   // -------- dry-run fakes -------- //

@@ -10,6 +10,22 @@ kafuops init
 
 The wizard should be friendly, explicit, and safe by default. It should never assume that source code, logs, or secrets can be sent to a model.
 
+## Implemented behavior (0.2.0)
+
+`kafuops init` now **auto-discovers** your service and confirms what it found before asking anything else:
+
+1. **Discovery** — detects language/framework, a likely start command (from `package.json` scripts or framework conventions for Python/Go/Rust/Java), the git remote + provider, packaging (Dockerfile / docker-compose / Helm-K8s → a suggested runtime mode), candidate `*.log` files, and which **AI tooling** is available on the machine (the `codex` and `claude` CLIs, plus `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`). All of this is printed as a "Discovered:" summary; the prompts are pre-filled with it so you just confirm or tweak.
+2. **AI provider menu** — built from what's installed, least-friction first:
+   - **Codex CLI** / **Claude CLI** if detected (local, *no API key needed* — KafuOps shells out to the installed binary).
+   - **OpenAI API** / **Anthropic API** (annotated when a key is already in your environment).
+   - **None** (deterministic offline heuristics).
+3. **Live model selection** — for API providers, the wizard fetches the **latest models your key can access** and lets you pick the analysis and patch models (sensible defaults pre-selected; a curated list is used offline). For CLI providers it asks for an optional model (blank = the CLI's own default).
+4. Keys are written to `.kafuops/.env` (mode `0600`, gitignored) — never to `.kafuops.yml`.
+
+`kafuops init --yes` skips all prompts and writes a safe config straight from discovery (provider `none`, no network).
+
+The sections below describe the broader configuration surface the wizard maps onto.
+
 ## Wizard goals
 
 The wizard configures:

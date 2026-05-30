@@ -2,6 +2,19 @@
 
 ## 0.2.0 — close the loop
 
+### Onboarding (follow-up)
+
+- **Auto-discovery wizard**: `kafuops init` detects the stack, start command, git
+  remote, packaging (→ suggested runtime mode), log files, and available AI
+  tooling, prints a "Discovered:" summary, and pre-fills every prompt.
+- **AI provider menu**: detected **Codex / Claude CLIs** offered first (no key
+  needed — KafuOps shells out to them), then OpenAI/Anthropic APIs, then none.
+- **Local-CLI providers** `llm.provider: codex | claude-cli` (new orchestrator
+  backend); `doctor` verifies the CLI is installed.
+- **Live model selection**: fetches the latest models your key can access and
+  lets you pick analysis/patch models (curated fallback offline).
+- New docs: `AI_PROVIDERS.md`; `kafuops init --yes` is fully non-interactive.
+
 ### Hardening (follow-up)
 
 - **CI**: GitHub Actions build + test on Node 20/22 for every push/PR.

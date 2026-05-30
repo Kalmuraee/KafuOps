@@ -65,7 +65,7 @@ still on the design board.
 | `RUNTIME_MODES.md` | ✅ | Wrapper, webhook, and sidecar (webhook + file tailing) all work. Kubernetes via `deploy/`. A minimal embedded Node SDK (`installErrorReporter`) is now included — see `docs/NODE_SDK.md`. |
 | `SECURITY_PRIVACY.md` | ✅ | Redaction, audit logging, never_modify policy, HMAC + bearer webhook auth, require_redaction gate. |
 | `SELF_HOSTING.md` | ✅ | Docker compose + Helm chart + raw K8s manifests. |
-| `SETUP_WIZARD.md` | ✅ | `kafuops init`. |
+| `SETUP_WIZARD.md` | ✅ | `kafuops init` auto-discovers the stack/start-command/repo/packaging/log-files/AI tooling and confirms it, offers a provider menu (incl. detected Codex/Claude CLIs), and live-fetches models to choose. See `AI_PROVIDERS.md`. |
 | `TROUBLESHOOTING.md` | ✅ | Reference doc; `policies explain --incident` now exists. |
 
 ## Larger gaps still open
