@@ -168,6 +168,16 @@
     .status-card p { margin: 0 0 8px; color: var(--ink); }
     .status-card a { color: #92400E; font-weight: 600; }
 
+    /* Demo videos */
+    .video-frame {
+      width: 100%; max-width: 900px; margin: 0 auto; display: block;
+      border-radius: 14px; border: 1px solid #1E293B;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35); background: #1b1d27;
+    }
+    .hero .video-frame { margin-top: 36px; box-shadow: 0 24px 70px rgba(0,0,0,0.5); }
+    .video-cap { text-align: center; color: var(--muted); font-size: 14px; margin-top: 14px; }
+    .video-cap .mono { color: var(--ink); }
+
     /* Footer */
     footer {
       border-top: 1px solid var(--border); padding: 36px 0 48px;
@@ -200,38 +210,48 @@
     <img class="wordmark" src="assets/wordmark.svg" alt="KafuOps">
     <h1>Turn backend incidents into <span class="accent">evidence-backed merge requests</span>.</h1>
     <p class="sub">
-      KafuOps observes your backend, learns the architecture, detects meaningful incidents, builds a sanitized
-      evidence packet, grounds the model with only the relevant files, and opens a reviewable PR or MR with confidence
-      and blast-radius analysis. Self-hostable. AGPL-3.0.
+      KafuOps watches your backend, detects real incidents, grounds a model with only the relevant files, then
+      writes a fix, <strong>retries until the tests pass</strong>, and opens a reviewable MR with confidence and
+      blast-radius analysis. One command to set up. Self-hostable. AGPL-3.0.
     </p>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/Kalmuraee/KafuOps#quick-start">Get started</a>
-      <a class="btn btn-ghost" href="https://github.com/Kalmuraee/KafuOps">View on GitHub</a>
-      <a class="btn btn-ghost" href="https://github.com/Kalmuraee/KafuOps/blob/main/STATUS.md">What works today</a>
+      <a class="btn btn-primary" href="#quickstart">Quickstart</a>
+      <a class="btn btn-ghost" href="#demo">Watch it fix a bug</a>
+      <a class="btn btn-ghost" href="https://github.com/Kalmuraee/KafuOps">GitHub</a>
     </div>
     <div class="pipeline">
       <span class="step mono">incident</span><span class="sep">→</span>
       <span class="step mono">grounded context</span><span class="sep">→</span>
-      <span class="step mono">sandbox patch</span><span class="sep">→</span>
+      <span class="step mono">self-correcting patch</span><span class="sep">→</span>
       <span class="step mr mono">reviewable MR</span>
     </div>
+    <video class="video-frame" autoplay muted loop playsinline
+           poster="assets/demo/kafuops-tui.gif"
+           aria-label="KafuOps terminal: one-command setup and dashboard">
+      <source src="assets/demo/kafuops-tui.mp4" type="video/mp4">
+      <img src="assets/demo/kafuops-tui.gif" alt="KafuOps terminal setup and dashboard">
+    </video>
+    <p class="video-cap">Real terminal — <span class="mono">npx kafuops quickstart</span> auto-detects your stack, sets up, and builds project memory.</p>
   </div>
 </header>
 
-<section style="background: white; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+<section id="demo" style="background: white; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
   <div class="container">
-    <h2>See it fix a real bug</h2>
+    <h2>Watch it fix a real bug</h2>
     <p class="lead">
       A planted bug in a tiny checkout service. KafuOps diagnoses it, writes the patch,
-      <strong>self-corrects when the first attempt fails</strong>, validates the fix in a sandbox,
-      and opens a reviewable MR — driven here by the local <strong>Claude CLI</strong> (no API key).
+      <strong>self-corrects when the first attempt doesn't apply</strong>, validates the fix in a sandbox
+      until the tests pass, and opens a reviewable MR — driven here by the local <strong>Claude CLI</strong>, no API key.
+      This is an unedited recording.
     </p>
-    <img src="assets/demo/recording.svg" alt="KafuOps fixing a bug end to end"
-         style="width:100%;max-width:820px;display:block;margin:1.25rem auto;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.12);"/>
-    <p style="text-align:center;color:#57606a;font-size:.9rem;margin-top:-.25rem;">
-      Real run on <code>examples/demo-discount</code> · reproduce with <code>scripts/demo.sh</code>
-    </p>
-    <div class="twocol" style="margin-top:1rem;">
+    <video class="video-frame" controls autoplay muted loop playsinline
+           poster="assets/demo/kafuops.gif"
+           aria-label="KafuOps fixing a real bug end to end">
+      <source src="assets/demo/kafuops.mp4" type="video/mp4">
+      <img src="assets/demo/kafuops.gif" alt="KafuOps fixing a bug end to end">
+    </video>
+    <p class="video-cap">Real run on <span class="mono">examples/demo-discount</span> · reproduce with <span class="mono">scripts/demo.sh</span></p>
+    <div class="twocol" style="margin-top:28px;">
       <div class="col"><img src="assets/demo/02-diff.svg" alt="the generated fix" style="width:100%;border-radius:10px;"/></div>
       <div class="col"><img src="assets/demo/03-mr.svg" alt="the generated merge request" style="width:100%;border-radius:10px;"/></div>
     </div>
@@ -278,40 +298,35 @@
     <h2>Key features</h2>
     <p class="lead">Each feature exists in <span class="mono">src/</span> today. See <a href="https://github.com/Kalmuraee/KafuOps/blob/main/STATUS.md">STATUS.md</a> for the honest map.</p>
     <div class="features">
-      <div class="feature"><h3><span class="dot"></span>Incident-triggered AI</h3><p>The model is only called after a configured trigger fires. Logs and stack traces are treated as untrusted data, not instructions.</p></div>
-      <div class="feature"><h3><span class="dot"></span>Living project memory</h3><p>A scanned map of routes, services, tests, dependencies, and the architecture graph — written to disk so humans can read it.</p></div>
-      <div class="feature accent"><h3><span class="dot"></span>Evidence-backed MRs</h3><p>Every MR ships with root cause, files inspected, tests run, confidence score, blast radius, and a grounding manifest.</p></div>
-      <div class="feature"><h3><span class="dot"></span>Privacy by default</h3><p>Redaction at ingest, redaction before model calls, ReDoS-guarded user patterns, deny-listed paths, raw-body HMAC for webhooks.</p></div>
-      <div class="feature"><h3><span class="dot"></span>Policy gates</h3><p>Never-modify globs, require-approval globs, confidence thresholds, and post-apply checks against the actual diff.</p></div>
-      <div class="feature accent"><h3><span class="dot"></span>Self-hostable</h3><p>Single Docker image. Local sandbox. No vendor lock-in. AGPL-3.0.</p></div>
+      <div class="feature"><h3><span class="dot"></span>Self-correcting fixes</h3><p>Generates a patch, runs your tests in a sandbox, reads the failure, and retries until green — then measures the fix rate with <span class="mono">kafuops eval</span>.</p></div>
+      <div class="feature"><h3><span class="dot"></span>Use any AI</h3><p>OpenAI or Anthropic by key, or your locally-installed <span class="mono">codex</span>/<span class="mono">claude</span> CLI with no key at all. Latest models fetched live in the wizard.</p></div>
+      <div class="feature accent"><h3><span class="dot"></span>Evidence-backed MRs</h3><p>Every MR ships with root cause, files changed, tests run, a confidence breakdown, blast radius, recurrence flags, and a grounding manifest.</p></div>
+      <div class="feature"><h3><span class="dot"></span>Privacy by default</h3><p>Redaction at ingest and before every model call, ReDoS-guarded patterns, deny-listed paths, HMAC/bearer webhook auth, and a patch path-traversal guard.</p></div>
+      <div class="feature"><h3><span class="dot"></span>Policy gates</h3><p>Never-modify and require-approval globs, confidence thresholds, post-apply checks against the real diff, and a fuzz-tested prompt-injection contract.</p></div>
+      <div class="feature accent"><h3><span class="dot"></span>Self-hostable</h3><p>Single Docker image, Helm chart + K8s manifests, local or Docker sandbox. No vendor lock-in. AGPL-3.0.</p></div>
     </div>
   </div>
 </section>
 
-<section>
+<section id="quickstart">
   <div class="container">
     <h2>Quick start</h2>
-    <p class="lead">From a clean clone:</p>
-<pre class="code"><span class="c-cmt"># install deps and build the CLI</span>
-<span class="c-cmd">npm</span> install
-<span class="c-cmd">npm</span> run build
+    <p class="lead">One command sets it up — inside any Node, TS, FastAPI, Flask, Go, Java, or Rust repo:</p>
+<pre class="code"><span class="c-cmt"># discover the stack, set up, build project memory — one command</span>
+<span class="c-cmd">npx</span> kafuops quickstart
 
-<span class="c-cmt"># inside any Node, TS, FastAPI, or Flask repo</span>
-<span class="c-cmd">kafuops</span> init -y
-<span class="c-cmd">kafuops</span> doctor
-<span class="c-cmd">kafuops</span> scan
+<span class="c-cmt"># wrap your app and watch for incidents (local/staging)</span>
+<span class="c-cmd">kafuops</span> run -- npm start
 
-<span class="c-cmt"># observe a child process for crashes</span>
-<span class="c-cmd">kafuops</span> run -- node ./server.js
-
-<span class="c-cmt"># or drive the full pipeline manually</span>
-<span class="c-cmd">kafuops</span> simulate error
-<span class="c-cmd">kafuops</span> incidents list
-<span class="c-cmd">kafuops</span> incidents open-mr inc_2026_05_15_xyz --in-place --dry-run
+<span class="c-cmt"># or production: sidecar + worker drive incidents → MRs</span>
+<span class="c-cmd">kafuops</span> agent start
+<span class="c-cmd">kafuops</span> worker start
 </pre>
     <p style="color: var(--muted); margin-top: 14px; font-size: 14px;">
-      Without <span class="mono">OPENAI_API_KEY</span> and <span class="mono">KAFUOPS_GIT_TOKEN</span> the whole pipeline runs in dry-run, so you can inspect the
-      generated incident, context bundle, grounding manifest, confidence score, and MR body before connecting anything live.
+      The wizard detects your framework, git remote, and which AI is available — it'll use a local
+      <span class="mono">codex</span>/<span class="mono">claude</span> CLI with no key, or an OpenAI/Anthropic key (stored in
+      <span class="mono">.kafuops/.env</span>, gitignored, loaded automatically). Without any provider the whole pipeline runs in
+      dry-run, so you can inspect every artifact before connecting anything live.
     </p>
   </div>
 </section>
@@ -344,11 +359,11 @@
 
 <section>
   <div class="container">
-    <h2>Honesty first</h2>
-    <p class="lead">This is a 0.1.0 MVP. Some parts of the documentation describe the destination, not today.</p>
+    <h2>Honest by default</h2>
+    <p class="lead">KafuOps ships with a status doc that maps every spec page to its real implementation state — no hand-waving.</p>
     <div class="status-card">
-      <h3>Read STATUS.md before you decide</h3>
-      <p>Every spec document is mapped to one of three states — ✅ implemented, 🟡 partial, 🔲 not yet. No ambiguity.</p>
+      <h3>STATUS.md — every item is ✅</h3>
+      <p>As of v0.3.0 every MVP criterion and every <span class="mono">docs/</span> page is implemented and test-backed; the only deliberately-deferred items (a first-class K8s operator, embeddings-based similarity, SSO/RBAC) are listed explicitly. 194 tests, CI green.</p>
       <p><a href="https://github.com/Kalmuraee/KafuOps/blob/main/STATUS.md">→ Open STATUS.md</a></p>
     </div>
   </div>
