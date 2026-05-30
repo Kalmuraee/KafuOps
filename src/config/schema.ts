@@ -136,6 +136,9 @@ export const ConfigSchema = z.object({
         })
         .default({}),
       structured_outputs: z.boolean().default(true),
+      // Self-correcting fix loop: total patch attempts (1 = no retry). Each retry
+      // feeds the sandbox test failure back to the model to revise the patch.
+      max_fix_attempts: z.number().int().min(1).max(5).default(2),
       max_context_files: z.number().int().positive().default(30),
       max_log_excerpt_chars: z.number().int().positive().default(12000),
       max_file_chars: z.number().int().positive().default(8000),
