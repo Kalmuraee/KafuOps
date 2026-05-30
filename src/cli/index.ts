@@ -21,6 +21,7 @@ import { policiesValidate, policiesExplain } from './commands/policies.js';
 import { auditList, auditShow, auditExport } from './commands/audit.js';
 import { webhooksStart, webhooksTest } from './commands/webhooks.js';
 import { agentStart, workerStart } from './commands/agent.js';
+import { evalCommand } from './commands/eval.js';
 
 const program = new Command();
 
@@ -139,6 +140,11 @@ program
       count: opts.count,
     });
   });
+
+program
+  .command('eval')
+  .description('Run the seeded fix-quality suite and report fix-success rate.')
+  .action(evalCommand);
 
 const memory = program.command('memory').description('Inspect or update project memory.');
 memory.command('show').action(memoryShow);
