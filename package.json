@@ -1,6 +1,6 @@
 {
   "name": "kafuops",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Open-source, self-hostable AI production-debugging agent for backend teams — turns incidents into sandbox-validated, evidence-backed merge requests. Bring your own LLM (OpenAI/Anthropic/local).",
   "license": "AGPL-3.0-only",
   "author": "Khalid (https://github.com/Kalmuraee)",

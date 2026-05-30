@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2 — discoverability
+
+- **Search / AI discoverability pass** across every surface. npm: keyword-rich
+  `description`, 24 `keywords` (ai-sre, aiops, root-cause-analysis, …), `author`,
+  `funding`; README gains dynamic npm version/downloads/node badges and a
+  keyword-rich intro. (The site, GitHub About/topics, structured data, OG image,
+  `robots.txt`/`sitemap.xml`/`llms.txt` ship alongside on the project + host-root
+  Pages sites.) Patch release so the npm package page reflects the new metadata.
+
 ## 0.3.1 — fix update check
 
 - **Fix: the update check never worked against the real npm registry.** The
