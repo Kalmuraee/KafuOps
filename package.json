@@ -11,10 +11,20 @@
   "files": [
     "bin",
     "dist",
-    "templates",
     "README.md",
     "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kalmuraee/KafuOps.git"
+  },
+  "homepage": "https://kalmuraee.github.io/KafuOps/",
+  "bugs": {
+    "url": "https://github.com/Kalmuraee/KafuOps/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
@@ -22,7 +32,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=20"
