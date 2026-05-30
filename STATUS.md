@@ -72,9 +72,11 @@ still on the design board.
 
 Not blocking, but worth knowing about:
 
-- **Real-provider fix quality** isn't benchmarked — the pipeline is proven
-  end-to-end with a mocked provider (`tests/e2e-fix.test.ts`), but how good the
-  actual LLM patches are on real bugs depends on the model and isn't measured here.
+- **Real-provider fix quality**: the pipeline now self-corrects (patch → test →
+  revise → retry, `llm.max_fix_attempts`) and there's a seeded eval suite
+  (`kafuops eval`, `src/eval/harness.ts`) that measures the fix-success rate +
+  confidence calibration. The *absolute* number for a given model still depends
+  on that model — run `kafuops eval` with your key to benchmark it.
 - **Agent dedup state is per-process** — run a single agent replica (the
   manifests pin `replicas: 1`). The *worker* is concurrency-safe via incident
   claiming, but the agent's in-memory rate/repeat windows are not shared.

@@ -87,6 +87,17 @@ kafuops incidents mark-rejected inc_123 --note "masked the real bug"
 `mark-merged` / `mark-rejected` record the reviewer's decision in
 `.kafuops/memory/review-feedback.md`, which is fed back into future analyses.
 
+## Eval (fix quality)
+
+```bash
+kafuops eval
+```
+
+Runs a seeded suite of buggy fixtures through the full pipeline against your
+configured provider and reports the **fix-success rate**, average patch attempts
+(the self-correcting loop), and confidence calibration. Run it with a real
+provider/key to measure quality; in dry-run it reports ~0% (no real model calls).
+
 ## Simulate errors
 
 ```bash
