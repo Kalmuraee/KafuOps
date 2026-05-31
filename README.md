@@ -127,6 +127,22 @@ kafuops agent start --config .kafuops.yml
 kafuops worker start --config .kafuops.yml
 ```
 
+### Run with Docker
+
+Prebuilt multi-arch images are published on each release to GHCR and Docker Hub:
+
+```bash
+docker pull ghcr.io/kalmuraee/kafuops:latest        # or: kalmuraee/kafuops:latest
+docker run --rm -p 7878:7878 \
+  -e KAFUOPS_CONFIG=/workspace/.kafuops.yml \
+  -v "$PWD/.kafuops.yml:/workspace/.kafuops.yml" \
+  -v "$PWD/.kafuops:/workspace/.kafuops" \
+  ghcr.io/kalmuraee/kafuops:latest agent start
+```
+
+See [docs/DEPLOYMENT_DOCKER.md](docs/DEPLOYMENT_DOCKER.md) for the agent + worker
+compose setup, and [deploy/](deploy/) for Kubernetes manifests and a Helm chart.
+
 ## Core design principles
 
 1. **Incident-triggered AI** — no continuous log streaming to the model.
