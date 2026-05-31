@@ -38,6 +38,33 @@ npm package to the exact GitHub commit + build), and creates a matching
 > the Trusted Publisher above isn't configured (or the workflow filename doesn't
 > match) — fix the npmjs.com setting; don't add a token.
 
+## Container images (Docker)
+
+The same `v*` tag also builds a multi-arch (amd64 + arm64) image via the
+**`docker`** job in `release.yml`, tagged `:<version>`, `:<major>.<minor>`, and
+`:latest`.
+
+- **GHCR** — `ghcr.io/kalmuraee/kafuops` pushes automatically with the built-in
+  `GITHUB_TOKEN`; **no setup needed**. This is what the k8s/Helm manifests use.
+- **Docker Hub** — `docker.io/kalmuraee/kafuops` pushes **only if** you add two
+  repo secrets (Settings → Secrets and variables → Actions):
+  - `DOCKERHUB_USERNAME` — your Docker Hub username
+  - `DOCKERHUB_TOKEN` — a Docker Hub **access token** (Account → Security → New
+    Access Token, Read/Write)
+
+  If those aren't set, the job logs a warning and pushes to GHCR only — the
+  release does **not** fail.
+
+**One-time, after the first GHCR push:** the package starts **private**. Make it
+public at
+`github.com/users/Kalmuraee/packages/container/kafuops/settings` → *Change
+visibility* → Public, so `docker pull` works without auth.
+
+```bash
+docker pull ghcr.io/kalmuraee/kafuops:latest      # or kalmuraee/kafuops:latest (Docker Hub)
+docker run --rm ghcr.io/kalmuraee/kafuops:latest --help
+```
+
 ## Publishing manually (no CI)
 
 ```bash
